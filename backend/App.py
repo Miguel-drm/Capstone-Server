@@ -31,8 +31,10 @@ def get_mongo_client():
             client = MongoClient(
                 MONGO_URI,
                 tls=True,
-                tlsCAFile=certifi.where(),
-                serverSelectionTimeoutMS=5000
+                tlsAllowInvalidCertificates=True,
+                serverSelectionTimeoutMS=30000,
+                connectTimeoutMS=30000,
+                socketTimeoutMS=30000
             )
             # Test the connection
             client.admin.command('ping')
