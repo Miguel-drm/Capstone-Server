@@ -30,10 +30,6 @@ def get_mongo_client():
         try:
             client = MongoClient(
                 MONGO_URI,
-                ssl=True,
-                ssl_cert_reqs=ssl.CERT_REQUIRED,
-                ssl_ca_certs=certifi.where(),
-                tlsAllowInvalidCertificates=False,
                 tls=True,
                 tlsCAFile=certifi.where(),
                 serverSelectionTimeoutMS=5000
