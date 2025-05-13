@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_URL = 'https://capstone-backend-t22z.onrender.com/api';
+import { api, auth } from '../utils/api';
 
 export default function SignupScreen() {
     const [name, setName] = useState('');
@@ -21,10 +19,7 @@ export default function SignupScreen() {
 
     const checkServerHealth = async () => {
         try {
-            console.log('Checking server health...');
-            const response = await fetch(`${API_URL}/health`);
-            const data = await response.json();
-            console.log('Server health response:', data);
+            const data = await api.health();
             setIsServerAvailable(data.status === 'healthy');
         } catch (error) {
             console.error('Server health check failed:', error);
@@ -69,66 +64,22 @@ export default function SignupScreen() {
 
         setIsLoading(true);
         try {
-            console.log('Attempting signup for email:', email);
-            console.log('Sending signup request to:', `${API_URL}/signup`);
+            console.log('Attempting signup with:', { name, email });
+            const data = await api.auth.signup(name, email, password);
+            console.log('Signup response:', data);
             
-            const requestBody = {
-                name,
-                email,
-                password,
-            };
-            console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
-            const response = await fetch(`${API_URL}/signup`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify(requestBody),
-            });
-
-            console.log('Response status:', response.status);
-            console.log('Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2));
-            
-            const responseText = await response.text();
-            console.log('Raw response text:', responseText);
-
-            if (!responseText) {
-                throw new Error('Empty response from server');
-            }
-
-            let data;
-            try {
-                data = JSON.parse(responseText);
-                console.log('Parsed response data:', JSON.stringify(data, null, 2));
-            } catch (e) {
-                console.error('JSON Parse Error:', e);
-                console.error('Failed to parse response:', responseText);
+            if (data.token && data.user) {
+                Alert.alert('Success', 'Account created successfully');
+                router.push('/intro');
+            } else {
                 throw new Error('Invalid response from server');
             }
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Something went wrong');
-            }
-
-            if (!data.token) {
-                throw new Error('No authentication token received');
-            }
-
-            // Store the token and user data
-            await AsyncStorage.setItem('userToken', data.token);
-            if (data.user) {
-                await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-            }
-            
-            console.log('Signup successful, token stored');
-            Alert.alert('Success', 'Account created successfully');
-            router.push('/intro');
         } catch (error: any) {
             console.error('Signup Error:', error);
             if (error.message.includes('Network request failed')) {
                 Alert.alert('Error', 'Unable to connect to the server. Please check your internet connection.');
+            } else if (error.message.includes('Email already registered')) {
+                Alert.alert('Error', 'This email is already registered. Please use a different email or try logging in.');
             } else {
                 Alert.alert('Error', error.message || 'An error occurred during signup');
             }
