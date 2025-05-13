@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pymongo import MongoClient
-from pymongo.server_api import ServerApi
 from bson import ObjectId
 import bcrypt
 import jwt
@@ -9,7 +8,6 @@ import datetime
 import os
 from dotenv import load_dotenv
 import certifi
-import ssl
 
 # Load environment variables
 load_dotenv()
@@ -19,25 +17,23 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI")
-client = MongoClient(
-    MONGO_URI,
-    tls=True,
-    tlsAllowInvalidCertificates=True,  # Changed
-    maxPoolSize=50,
-    server_api=ServerApi('1')
-)
+
+try:
+    client = MongoClient(
+        MONGO_URI,
+        tls=True,
+        tlsCAFile=certifi.where(),
+        serverSelectionTimeoutMS=30000  # 30 seconds timeout
+    )
+    client.admin.command('ping')
+    print("✅ Successfully connected to MongoDB Atlas!")
+except Exception as e:
+    print(f"❌ Error connecting to MongoDB: {e}")
 
 db = client['Capstone_Users']
 users_collection = db['users']
 
-# Test MongoDB connection
-try:
-    client.admin.command('ping')
-    print("Successfully connected to MongoDB!")
-except Exception as e:
-    print(f"Error connecting to MongoDB: {e}")
-
-# JWT Configuration
+# JWT secret
 JWT_SECRET = os.getenv('JWT_SECRET', 'your_secret_key_here')
 
 @app.route('/api/health', methods=['GET'])
@@ -58,14 +54,10 @@ def signup():
         if not all([name, email, password]):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # Check if user already exists
         if users_collection.find_one({'email': email}):
             return jsonify({'error': 'Email already exists'}), 400
 
-        # Hash password
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-
-        # Create user document
         user = {
             'name': name,
             'email': email,
@@ -73,10 +65,8 @@ def signup():
             'created_at': datetime.datetime.utcnow()
         }
 
-        # Insert user into database
         result = users_collection.insert_one(user)
-        
-        # Generate JWT token
+
         token = jwt.encode({
             'user_id': str(result.inserted_id),
             'email': email,
@@ -105,16 +95,13 @@ def login():
         if not all([email, password]):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # Find user by email
         user = users_collection.find_one({'email': email})
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
-        # Verify password
         if not bcrypt.checkpw(password.encode('utf-8'), user['password']):
             return jsonify({'error': 'Invalid password'}), 401
 
-        # Generate JWT token
         token = jwt.encode({
             'user_id': str(user['_id']),
             'email': user['email'],
@@ -137,4 +124,4 @@ def login():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port) 
+    app.run(host='0.0.0.0', port=port)
