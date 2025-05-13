@@ -22,7 +22,8 @@ client = MongoClient(
     MONGO_URI,
     server_api=ServerApi('1'),
     serverSelectionTimeoutMS=5000,
-    tlsCAFile=certifi.where()
+    tls=True,
+    tlsAllowInvalidCertificates=True
 )
 db = client['Capstone_Users']
 users_collection = db['users']
