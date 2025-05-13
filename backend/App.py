@@ -22,7 +22,7 @@ try:
     client = MongoClient(
         MONGO_URI,
         tls=True,
-        tlsCAFile=certifi.where(),
+        tlsAllowInvalidCertificates=True,
         serverSelectionTimeoutMS=30000  # 30 seconds timeout
     )
     client.admin.command('ping')
