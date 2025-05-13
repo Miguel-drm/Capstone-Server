@@ -8,6 +8,7 @@ import jwt
 import datetime
 import os
 from dotenv import load_dotenv
+import certifi
 
 # Load environment variables
 load_dotenv()
@@ -17,7 +18,12 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # MongoDB Configuration
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://Capstone:CapstonePass@capstone.gbc4i9h.mongodb.net/?retryWrites=true&w=majority&appName=Capstone')
-client = MongoClient(MONGO_URI, server_api=ServerApi('1'), serverSelectionTimeoutMS=5000)
+client = MongoClient(
+    MONGO_URI,
+    server_api=ServerApi('1'),
+    serverSelectionTimeoutMS=5000,
+    tlsCAFile=certifi.where()
+)
 db = client['Capstone_Users']
 users_collection = db['users']
 
