@@ -35,18 +35,21 @@ JWT_SECRET = os.getenv('JWT_SECRET')
 if not JWT_SECRET:
     raise ValueError("JWT_SECRET environment variable is not set")
 
-# Initialize MongoDB client with connection pooling
+# Initialize MongoDB client with updated SSL configuration
 client = MongoClient(
     MONGO_URI,
+    tls=True,
+    tlsCAFile=certifi.where(),
+    tlsAllowInvalidCertificates=False,
+    serverSelectionTimeoutMS=30000,
+    connectTimeoutMS=30000,
+    socketTimeoutMS=30000,
     maxPoolSize=50,
     minPoolSize=10,
     maxIdleTimeMS=30000,
     waitQueueTimeoutMS=2500,
-    tls=True,
-    tlsAllowInvalidCertificates=True,
-    serverSelectionTimeoutMS=5000,
-    connectTimeoutMS=5000,
-    socketTimeoutMS=5000
+    retryWrites=True,
+    retryReads=True
 )
 
 # Initialize database and collection
@@ -61,6 +64,7 @@ def get_mongo_client():
     try:
         # Test the connection
         client.admin.command('ping')
+        print("✅ Successfully connected to MongoDB Atlas!")
         return client, db, users_collection
     except ConnectionFailure as e:
         print(f"❌ Error connecting to MongoDB: {e}")
@@ -69,9 +73,9 @@ def get_mongo_client():
 # Initialize MongoDB connection
 try:
     client, db, users_collection = get_mongo_client()
-    print("✅ Successfully connected to MongoDB Atlas!")
 except Exception as e:
     print(f"Failed to initialize MongoDB connection: {e}")
+    raise
 
 def token_required(f):
     @wraps(f)

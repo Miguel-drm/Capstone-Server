@@ -20,9 +20,18 @@ export default function LoginScreen() {
       return;
     }
 
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
     setIsLoading(true);
     try {
+      console.log('Attempting login for email:', email);
       console.log('Sending login request to:', `${API_URL}/login`);
+      
       const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
@@ -51,14 +60,22 @@ export default function LoginScreen() {
         throw new Error(data.error || 'Something went wrong');
       }
 
-      // Store the token
+      // Store the token and user data
       await AsyncStorage.setItem('userToken', data.token);
+      if (data.user) {
+        await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+      }
       
+      console.log('Login successful, token stored');
       Alert.alert('Success', 'Logged in successfully');
       router.push('/intro');
     } catch (error: any) {
       console.error('Login Error:', error);
-      Alert.alert('Error', error.message || 'An error occurred');
+      if (error.message.includes('Network request failed')) {
+        Alert.alert('Error', 'Unable to connect to the server. Please check your internet connection.');
+      } else {
+        Alert.alert('Error', error.message || 'An error occurred during login');
+      }
     } finally {
       setIsLoading(false);
     }

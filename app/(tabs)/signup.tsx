@@ -14,9 +14,28 @@ export default function SignupScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
+    const validatePassword = (pass: string) => {
+        // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
+        const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+        return regex.test(pass);
+    };
+
     const handleSignup = async () => {
         if (!name || !email || !password || !confirmPassword) {
             Alert.alert('Error', 'Please fill in all fields');
+            return;
+        }
+
+        // Email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            Alert.alert('Error', 'Please enter a valid email address');
+            return;
+        }
+
+        // Password validation
+        if (!validatePassword(password)) {
+            Alert.alert('Error', 'Password must be at least 8 characters long and contain uppercase, lowercase, and numbers');
             return;
         }
 
@@ -27,7 +46,9 @@ export default function SignupScreen() {
 
         setIsLoading(true);
         try {
+            console.log('Attempting signup for email:', email);
             console.log('Sending signup request to:', `${API_URL}/signup`);
+            
             const response = await fetch(`${API_URL}/signup`, {
                 method: 'POST',
                 headers: {
@@ -57,14 +78,22 @@ export default function SignupScreen() {
                 throw new Error(data.error || 'Something went wrong');
             }
 
-            // Store the token
+            // Store the token and user data
             await AsyncStorage.setItem('userToken', data.token);
+            if (data.user) {
+                await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+            }
             
+            console.log('Signup successful, token stored');
             Alert.alert('Success', 'Account created successfully');
             router.push('/intro');
         } catch (error: any) {
             console.error('Signup Error:', error);
-            Alert.alert('Error', error.message || 'An error occurred');
+            if (error.message.includes('Network request failed')) {
+                Alert.alert('Error', 'Unable to connect to the server. Please check your internet connection.');
+            } else {
+                Alert.alert('Error', error.message || 'An error occurred during signup');
+            }
         } finally {
             setIsLoading(false);
         }
