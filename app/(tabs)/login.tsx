@@ -32,32 +32,47 @@ export default function LoginScreen() {
       console.log('Attempting login for email:', email);
       console.log('Sending login request to:', `${API_URL}/login`);
       
+      const requestBody = {
+        email,
+        password,
+      };
+      console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
       const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       console.log('Response status:', response.status);
+      console.log('Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2));
+      
       const responseText = await response.text();
-      console.log('Response text:', responseText);
+      console.log('Raw response text:', responseText);
+
+      if (!responseText) {
+        throw new Error('Empty response from server');
+      }
 
       let data;
       try {
         data = JSON.parse(responseText);
+        console.log('Parsed response data:', JSON.stringify(data, null, 2));
       } catch (e) {
         console.error('JSON Parse Error:', e);
+        console.error('Failed to parse response:', responseText);
         throw new Error('Invalid response from server');
       }
 
       if (!response.ok) {
         throw new Error(data.error || 'Something went wrong');
+      }
+
+      if (!data.token) {
+        throw new Error('No authentication token received');
       }
 
       // Store the token and user data
