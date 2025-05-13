@@ -8,6 +8,7 @@ import datetime
 import os
 from dotenv import load_dotenv
 import certifi
+import ssl
 
 # Load environment variables
 load_dotenv()
@@ -16,16 +17,20 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # MongoDB Configuration
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI =  "mongodb+srv://Capstone:CapstonePass@ac-j4kf1f6.gbc4i9h.mongodb.net/Capstone_Users?retryWrites=true"
 
 try:
     client = MongoClient(
         MONGO_URI,
+        ssl=True,
+        ssl_cert_reqs=ssl.CERT_REQUIRED,
+        ssl_ca_certs=certifi.where(),
+        tlsAllowInvalidCertificates=False,
         tls=True,
-        tlsAllowInvalidCertificates=True,
-        serverSelectionTimeoutMS=30000  # 30 seconds timeout
-    )
-    client.admin.command('ping')
+        tlsCAFile=certifi.where(),
+        serverSelectionTimeoutMS=5000
+        )
+    client.admin.command('ping')    
     print("✅ Successfully connected to MongoDB Atlas!")
 except Exception as e:
     print(f"❌ Error connecting to MongoDB: {e}")
