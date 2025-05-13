@@ -1,59 +1,58 @@
 import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
-
+import { Stack } from 'expo-router';
+import { Text, StyleSheet } from 'react-native';
 import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
+const CustomTitle = () => (
+  <Text style={styles.headerTitle}>Phil E-Read</Text>
+);
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <Tabs
+    <Stack
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
-      <Tabs.Screen
-        name="index"
+        headerStyle: {
+          backgroundColor: Colors.dark.background,
+        },
+        headerTintColor: Colors.dark.text,
+        headerBackVisible: false,
+        headerBackButtonMenuEnabled: false,
+        headerLeft: () => null,
+        headerShadowVisible: false,
+      }}
+    >
+      <Stack.Screen
+        name="login"
         options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
+          headerShown: true,
+          headerTitle: () => <CustomTitle />,
         }}
       />
-      <Tabs.Screen
-        name="two"
+      <Stack.Screen
+        name="signup"
         options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          headerShown: true,
+          headerTitle: () => <CustomTitle />,
         }}
       />
-    </Tabs>
+      <Stack.Screen
+        name="forgotPassword"
+        options={{
+          headerShown: true,
+          headerTitle: () => <CustomTitle />,
+        }}
+      />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="intro" options={{ headerShown: false }} />
+    </Stack>
   );
 }
+
+const styles = StyleSheet.create({
+  headerTitle: {
+    fontSize: 25,
+    fontWeight: 'bold',
+    marginLeft: 15,
+    color: Colors.dark.text,
+  },
+});

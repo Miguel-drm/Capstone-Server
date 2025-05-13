@@ -1,31 +1,42 @@
-import { StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { Redirect } from 'expo-router';
+import Colors from '@/constants/Colors';
 
-import EditScreenInfo from '@/components/EditScreenInfo';
-import { Text, View } from '@/components/Themed';
+export default function Index() {
+  const [isLoading, setIsLoading] = useState(true);
 
-export default function TabOneScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Tab One</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-      <EditScreenInfo path="app/(tabs)/index.tsx" />
-    </View>
-  );
+  useEffect(() => {
+    // Simulate a loading delay
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 2000); 
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={Colors.dark.tint} />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  return <Redirect href="/intro" />;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.background,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  loadingText: {
+    marginTop: 10,
+    fontSize: 18,
+    color: Colors.dark.text,
   },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '80%',
-  },
-});
+}); 
