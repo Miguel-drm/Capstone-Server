@@ -17,37 +17,64 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # MongoDB Configuration
-MONGO_URI =  "mongodb+srv://Capstone:CapstonePass@ac-j4kf1f6.gbc4i9h.mongodb.net/Capstone_Users?retryWrites=true"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://Capstone:CapstonePass@ac-j4kf1f6.gbc4i9h.mongodb.net/Capstone_Users?retryWrites=true")
 
+# Initialize MongoDB client as None
+client = None
+db = None
+users_collection = None
+
+def get_mongo_client():
+    global client, db, users_collection
+    if client is None:
+        try:
+            client = MongoClient(
+                MONGO_URI,
+                ssl=True,
+                ssl_cert_reqs=ssl.CERT_REQUIRED,
+                ssl_ca_certs=certifi.where(),
+                tlsAllowInvalidCertificates=False,
+                tls=True,
+                tlsCAFile=certifi.where(),
+                serverSelectionTimeoutMS=5000
+            )
+            # Test the connection
+            client.admin.command('ping')
+            print("✅ Successfully connected to MongoDB Atlas!")
+            
+            # Initialize database and collection
+            db = client['Capstone_Users']
+            users_collection = db['users']
+        except Exception as e:
+            print(f"❌ Error connecting to MongoDB: {e}")
+            raise
+    return client, db, users_collection
+
+# Initialize MongoDB connection
 try:
-    client = MongoClient(
-        MONGO_URI,
-        ssl=True,
-        ssl_cert_reqs=ssl.CERT_REQUIRED,
-        ssl_ca_certs=certifi.where(),
-        tlsAllowInvalidCertificates=False,
-        tls=True,
-        tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=5000
-        )
-    client.admin.command('ping')    
-    print("✅ Successfully connected to MongoDB Atlas!")
+    client, db, users_collection = get_mongo_client()
 except Exception as e:
-    print(f"❌ Error connecting to MongoDB: {e}")
-
-db = client['Capstone_Users']
-users_collection = db['users']
+    print(f"Failed to initialize MongoDB connection: {e}")
 
 # JWT secret
 JWT_SECRET = os.getenv('JWT_SECRET', 'your_secret_key_here')
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy"}), 200
+    try:
+        # Test MongoDB connection
+        client.admin.command('ping')
+        return jsonify({"status": "healthy", "database": "connected"}), 200
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "database": "disconnected", "error": str(e)}), 500
 
 @app.route('/api/signup', methods=['POST'])
 def signup():
     try:
+        # Ensure MongoDB connection
+        if client is None:
+            client, db, users_collection = get_mongo_client()
+            
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
@@ -90,6 +117,10 @@ def signup():
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
+        # Ensure MongoDB connection
+        if client is None:
+            client, db, users_collection = get_mongo_client()
+            
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
