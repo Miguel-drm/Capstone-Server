@@ -13,11 +13,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # MongoDB Configuration
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://Capstone:CapstonePass@capstone.gbc4i9h.mongodb.net/?retryWrites=true&w=majority&appName=Capstone')
-client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
+client = MongoClient(MONGO_URI, server_api=ServerApi('1'), serverSelectionTimeoutMS=5000)
 db = client['Capstone_Users']
 users_collection = db['users']
 
@@ -31,13 +31,23 @@ except Exception as e:
 # JWT Configuration
 JWT_SECRET = os.getenv('JWT_SECRET', 'your_secret_key_here')
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
 @app.route('/api/signup', methods=['POST'])
 def signup():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
         name = data.get('name')
         email = data.get('email')
         password = data.get('password')
+
+        if not all([name, email, password]):
+            return jsonify({'error': 'Missing required fields'}), 400
 
         # Check if user already exists
         if users_collection.find_one({'email': email}):
@@ -70,14 +80,21 @@ def signup():
         }), 201
 
     except Exception as e:
+        print(f"Signup error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
         email = data.get('email')
         password = data.get('password')
+
+        if not all([email, password]):
+            return jsonify({'error': 'Missing required fields'}), 400
 
         # Find user by email
         user = users_collection.find_one({'email': email})
@@ -106,6 +123,7 @@ def login():
         }), 200
 
     except Exception as e:
+        print(f"Login error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
