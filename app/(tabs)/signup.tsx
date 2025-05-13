@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
@@ -12,7 +12,25 @@ export default function SignupScreen() {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isServerAvailable, setIsServerAvailable] = useState(false);
     const router = useRouter();
+
+    useEffect(() => {
+        checkServerHealth();
+    }, []);
+
+    const checkServerHealth = async () => {
+        try {
+            console.log('Checking server health...');
+            const response = await fetch(`${API_URL}/health`);
+            const data = await response.json();
+            console.log('Server health response:', data);
+            setIsServerAvailable(data.status === 'healthy');
+        } catch (error) {
+            console.error('Server health check failed:', error);
+            setIsServerAvailable(false);
+        }
+    };
 
     const validatePassword = (pass: string) => {
         // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
@@ -21,6 +39,11 @@ export default function SignupScreen() {
     };
 
     const handleSignup = async () => {
+        if (!isServerAvailable) {
+            Alert.alert('Error', 'Server is currently unavailable. Please try again later.');
+            return;
+        }
+
         if (!name || !email || !password || !confirmPassword) {
             Alert.alert('Error', 'Please fill in all fields');
             return;
