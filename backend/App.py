@@ -22,11 +22,11 @@ MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(
     MONGO_URI,
     tls=True,
-    tlsCAFile=certifi.where(),
-    connectTimeoutMS=30000,
-    socketTimeoutMS=30000,
-    maxPoolSize=50
+    tlsAllowInvalidCertificates=True,  # Changed
+    maxPoolSize=50,
+    server_api=ServerApi('1')
 )
+
 db = client['Capstone_Users']
 users_collection = db['users']
 
