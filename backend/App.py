@@ -17,7 +17,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # MongoDB Configuration
-MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://Capstone:CapstonePass@capstone.gbc4i9h.mongodb.net/?retryWrites=true&w=majority&appName=Capstone')
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://Capstone:CapstonePass@capstone.gbc4i9h.mongodb.net/Capstone_Users?retryWrites=true&w=majority')
 client = MongoClient(
     MONGO_URI,
     server_api=ServerApi('1'),
