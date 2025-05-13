@@ -17,9 +17,10 @@ export default function SignupScreen() {
 
     const checkServerHealth = async () => {
         try {
+            console.log('Checking server health...');
             const data = await api.health();
+            console.log('Server health response:', data);
             setIsServerAvailable(data.status === 'healthy');
-            console.log('Server health check:', data);
         } catch (error) {
             console.error('Server health check failed:', error);
             setIsServerAvailable(false);
@@ -27,6 +28,11 @@ export default function SignupScreen() {
     };
 
     const validateInputs = () => {
+        console.log('Validating inputs...');
+        console.log('Name:', name);
+        console.log('Email:', email);
+        console.log('Password length:', password.length);
+
         if (!name.trim()) {
             Alert.alert('Error', 'Please enter your name');
             return false;
@@ -43,13 +49,19 @@ export default function SignupScreen() {
     };
 
     const handleSignup = async () => {
+        console.log('Signup button clicked');
+        console.log('Server available:', isServerAvailable);
+
         if (!isServerAvailable) {
             Alert.alert('Error', 'Server is currently unavailable. Please try again later.');
             return;
         }
 
         try {
-            if (!validateInputs()) return;
+            if (!validateInputs()) {
+                console.log('Input validation failed');
+                return;
+            }
 
             setLoading(true);
             console.log('Starting signup process...');
@@ -67,17 +79,31 @@ export default function SignupScreen() {
 
             // Proceed with actual signup
             console.log('Proceeding with signup...');
+            console.log('Sending signup request with data:', {
+                name,
+                email,
+                password: '***' // Don't log actual password
+            });
+
             const response = await api.auth.signup(name, email, password);
-            console.log('Signup successful:', response);
+            console.log('Signup response:', response);
 
             Alert.alert('Success', 'Account created successfully!', [
                 {
                     text: 'OK',
-                    onPress: () => router.replace('/login')
+                    onPress: () => {
+                        console.log('Navigating to login screen...');
+                        router.replace('/login');
+                    }
                 }
             ]);
         } catch (error) {
             console.error('Signup error:', error);
+            console.error('Error details:', {
+                message: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined
+            });
+            
             Alert.alert(
                 'Error',
                 error instanceof Error ? error.message : 'Failed to create account. Please try again.'
@@ -98,7 +124,10 @@ export default function SignupScreen() {
                 placeholder="Enter your name"
                 placeholderTextColor="#888"
                 value={name}
-                onChangeText={setName}
+                onChangeText={(text) => {
+                    console.log('Name changed:', text);
+                    setName(text);
+                }}
                 autoCapitalize="words"
                 editable={!loading}
             />
@@ -109,7 +138,10 @@ export default function SignupScreen() {
                 placeholder="Enter your email"
                 placeholderTextColor="#888"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(text) => {
+                    console.log('Email changed:', text);
+                    setEmail(text);
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 editable={!loading}
@@ -121,7 +153,10 @@ export default function SignupScreen() {
                 placeholder="Enter your password"
                 placeholderTextColor="#888"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => {
+                    console.log('Password changed (length):', text.length);
+                    setPassword(text);
+                }}
                 secureTextEntry
                 editable={!loading}
             />

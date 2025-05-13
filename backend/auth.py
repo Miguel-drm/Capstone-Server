@@ -32,14 +32,17 @@ def generate_token(user_id):
 def signup():
     try:
         logger.debug("Received signup request")
+        logger.debug(f"Request headers: {dict(request.headers)}")
+        
         data = request.get_json()
         logger.debug(f"Request data: {data}")
         
         # Validate required fields
         required_fields = ['email', 'password', 'name']
         if not all(field in data for field in required_fields):
-            logger.error(f"Missing required fields. Received: {list(data.keys())}")
-            return jsonify({'error': 'Missing required fields'}), 400
+            missing_fields = [field for field in required_fields if field not in data]
+            logger.error(f"Missing required fields: {missing_fields}")
+            return jsonify({'error': f'Missing required fields: {", ".join(missing_fields)}'}), 400
 
         # Get users collection
         users = get_collection('users')
@@ -52,6 +55,7 @@ def signup():
             return jsonify({'error': 'Email already registered'}), 400
 
         # Hash password
+        logger.debug("Hashing password...")
         hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt())
         logger.debug("Password hashed successfully")
 
@@ -65,10 +69,12 @@ def signup():
         logger.debug(f"Created user document for: {data['email']}")
 
         # Insert user into database
+        logger.debug("Attempting to insert user into database...")
         result = users.insert_one(user)
         logger.debug(f"User inserted with ID: {result.inserted_id}")
         
         # Generate token
+        logger.debug("Generating JWT token...")
         token = generate_token(result.inserted_id)
         logger.debug("Token generated successfully")
 
