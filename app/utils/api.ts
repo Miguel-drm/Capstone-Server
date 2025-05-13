@@ -1,7 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // API Configuration
-export const API_URL = 'https://capstone-backend-t22z.onrender.com/api';  // Your deployed backend URL
+export const API_URL = 'https://capstone-backend-t22z.onrender.com/api';
+
+// Validation functions
+const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const validatePassword = (password: string): boolean => {
+  // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
+  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  return regex.test(password);
+};
 
 // API Headers
 export const getHeaders = async () => {
@@ -18,12 +30,24 @@ export const api = {
   // Auth endpoints
   auth: {
     login: async (email: string, password: string) => {
+      if (!validateEmail(email)) {
+        throw new Error('Invalid email format');
+      }
+      if (!password) {
+        throw new Error('Password is required');
+      }
+
+      console.log('Attempting login for:', email);
       const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: await getHeaders(),
         body: JSON.stringify({ email, password })
       });
+      
+      console.log('Login response status:', response.status);
       const data = await handleResponse(response);
+      console.log('Login response data:', data);
+
       if (data.token) {
         await AsyncStorage.setItem('userToken', data.token);
       }
@@ -34,12 +58,30 @@ export const api = {
     },
 
     signup: async (name: string, email: string, password: string) => {
+      // Validate inputs
+      if (!name || name.trim().length < 2) {
+        throw new Error('Name must be at least 2 characters long');
+      }
+      if (!validateEmail(email)) {
+        throw new Error('Invalid email format');
+      }
+      if (!validatePassword(password)) {
+        throw new Error('Password must be at least 8 characters long and contain uppercase, lowercase, and numbers');
+      }
+
+      console.log('Sending signup request to:', `${API_URL}/auth/signup`);
+      console.log('Signup data:', { name, email, password: '***' });
+      
       const response = await fetch(`${API_URL}/auth/signup`, {
         method: 'POST',
         headers: await getHeaders(),
         body: JSON.stringify({ name, email, password })
       });
+      
+      console.log('Signup response status:', response.status);
       const data = await handleResponse(response);
+      console.log('Signup response data:', data);
+
       if (data.token) {
         await AsyncStorage.setItem('userToken', data.token);
       }
@@ -65,6 +107,9 @@ export const api = {
     },
 
     updateProfile: async (data: { name?: string }) => {
+      if (data.name && data.name.trim().length < 2) {
+        throw new Error('Name must be at least 2 characters long');
+      }
       const response = await fetch(`${API_URL}/profile`, {
         method: 'PUT',
         headers: await getHeaders(),
@@ -78,6 +123,22 @@ export const api = {
   health: async () => {
     const response = await fetch(`${API_URL}/health`);
     return handleResponse(response);
+  },
+
+  // Test endpoints
+  test: {
+    db: async () => {
+      const response = await fetch(`${API_URL}/test/db`);
+      return handleResponse(response);
+    },
+    user: async (email: string) => {
+      const response = await fetch(`${API_URL}/test/user`, {
+        method: 'POST',
+        headers: await getHeaders(),
+        body: JSON.stringify({ email })
+      });
+      return handleResponse(response);
+    }
   }
 };
 
@@ -90,10 +151,16 @@ const handleResponse = async (response: Response) => {
     data = text ? JSON.parse(text) : {};
   } catch (e) {
     console.error('Error parsing response:', e);
+    console.error('Raw response:', text);
     throw new Error('Invalid response from server');
   }
 
   if (!response.ok) {
+    console.error('API Error:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: data
+    });
     throw new Error(data.error || 'Something went wrong');
   }
 

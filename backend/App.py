@@ -1,11 +1,16 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from db import get_db, get_collection
+from db import get_db, get_collection, client
 from auth import auth, token_required
 import os
 from dotenv import load_dotenv
 from bson import ObjectId
 from datetime import datetime
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -15,6 +20,71 @@ CORS(app)  # Enable CORS for all routes
 
 # Register auth blueprint
 app.register_blueprint(auth, url_prefix='/api/auth')
+
+# Test MongoDB connection
+@app.route('/api/test/db', methods=['GET'])
+def test_db():
+    try:
+        # Test basic connection
+        client.admin.command('ping')
+        logger.debug("MongoDB connection successful")
+
+        # Test database access
+        db = get_db()
+        collections = db.list_collection_names()
+        logger.debug(f"Available collections: {collections}")
+
+        # Test users collection
+        users = get_collection('users')
+        user_count = users.count_documents({})
+        logger.debug(f"Total users in database: {user_count}")
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Database connection successful',
+            'collections': collections,
+            'user_count': user_count
+        }), 200
+    except Exception as e:
+        logger.error(f"Database test failed: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Database test failed: {str(e)}'
+        }), 500
+
+# Test user creation
+@app.route('/api/test/user', methods=['POST'])
+def test_user_creation():
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            return jsonify({'error': 'Email is required'}), 400
+
+        users = get_collection('users')
+        test_user = {
+            'email': data['email'],
+            'name': 'Test User',
+            'created_at': datetime.utcnow()
+        }
+        
+        result = users.insert_one(test_user)
+        logger.debug(f"Test user created with ID: {result.inserted_id}")
+
+        # Clean up test user
+        users.delete_one({'_id': result.inserted_id})
+        logger.debug("Test user cleaned up")
+
+        return jsonify({
+            'status': 'success',
+            'message': 'User creation test successful',
+            'user_id': str(result.inserted_id)
+        }), 200
+    except Exception as e:
+        logger.error(f"User creation test failed: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'User creation test failed: {str(e)}'
+        }), 500
 
 # Error handlers
 @app.errorhandler(404)

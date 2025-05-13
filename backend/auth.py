@@ -5,6 +5,11 @@ import jwt
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -26,22 +31,29 @@ def generate_token(user_id):
 @auth.route('/signup', methods=['POST'])
 def signup():
     try:
+        logger.debug("Received signup request")
         data = request.get_json()
+        logger.debug(f"Request data: {data}")
         
         # Validate required fields
         required_fields = ['email', 'password', 'name']
         if not all(field in data for field in required_fields):
+            logger.error(f"Missing required fields. Received: {list(data.keys())}")
             return jsonify({'error': 'Missing required fields'}), 400
 
         # Get users collection
         users = get_collection('users')
+        logger.debug("Got users collection")
 
         # Check if user already exists
-        if users.find_one({'email': data['email']}):
+        existing_user = users.find_one({'email': data['email']})
+        if existing_user:
+            logger.warning(f"Email already registered: {data['email']}")
             return jsonify({'error': 'Email already registered'}), 400
 
         # Hash password
         hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt())
+        logger.debug("Password hashed successfully")
 
         # Create user document
         user = {
@@ -50,14 +62,17 @@ def signup():
             'name': data['name'],
             'created_at': datetime.utcnow()
         }
+        logger.debug(f"Created user document for: {data['email']}")
 
         # Insert user into database
         result = users.insert_one(user)
+        logger.debug(f"User inserted with ID: {result.inserted_id}")
         
         # Generate token
         token = generate_token(result.inserted_id)
+        logger.debug("Token generated successfully")
 
-        return jsonify({
+        response_data = {
             'message': 'User created successfully',
             'token': token,
             'user': {
@@ -65,9 +80,12 @@ def signup():
                 'email': data['email'],
                 'name': data['name']
             }
-        }), 201
+        }
+        logger.debug(f"Sending response: {response_data}")
+        return jsonify(response_data), 201
 
     except Exception as e:
+        logger.error(f"Error in signup: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @auth.route('/login', methods=['POST'])

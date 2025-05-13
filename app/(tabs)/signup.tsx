@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { router } from 'expo-router';
+import { api } from '../utils/api';
 import Colors from '@/constants/Colors';
-import { api, auth } from '../utils/api';
 
 export default function SignupScreen() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [isServerAvailable, setIsServerAvailable] = useState(false);
-    const router = useRouter();
 
     useEffect(() => {
         checkServerHealth();
@@ -21,16 +19,27 @@ export default function SignupScreen() {
         try {
             const data = await api.health();
             setIsServerAvailable(data.status === 'healthy');
+            console.log('Server health check:', data);
         } catch (error) {
             console.error('Server health check failed:', error);
             setIsServerAvailable(false);
         }
     };
 
-    const validatePassword = (pass: string) => {
-        // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
-        const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-        return regex.test(pass);
+    const validateInputs = () => {
+        if (!name.trim()) {
+            Alert.alert('Error', 'Please enter your name');
+            return false;
+        }
+        if (!email.trim()) {
+            Alert.alert('Error', 'Please enter your email');
+            return false;
+        }
+        if (!password) {
+            Alert.alert('Error', 'Please enter your password');
+            return false;
+        }
+        return true;
     };
 
     const handleSignup = async () => {
@@ -39,59 +48,50 @@ export default function SignupScreen() {
             return;
         }
 
-        if (!name || !email || !password || !confirmPassword) {
-            Alert.alert('Error', 'Please fill in all fields');
-            return;
-        }
-
-        // Email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            Alert.alert('Error', 'Please enter a valid email address');
-            return;
-        }
-
-        // Password validation
-        if (!validatePassword(password)) {
-            Alert.alert('Error', 'Password must be at least 8 characters long and contain uppercase, lowercase, and numbers');
-            return;
-        }
-
-        if (password !== confirmPassword) {
-            Alert.alert('Error', 'Passwords do not match');
-            return;
-        }
-
-        setIsLoading(true);
         try {
-            console.log('Attempting signup with:', { name, email });
-            const data = await api.auth.signup(name, email, password);
-            console.log('Signup response:', data);
-            
-            if (data.token && data.user) {
-                Alert.alert('Success', 'Account created successfully');
-                router.push('/intro');
-            } else {
-                throw new Error('Invalid response from server');
+            if (!validateInputs()) return;
+
+            setLoading(true);
+            console.log('Starting signup process...');
+
+            // First test the database connection
+            try {
+                console.log('Testing database connection...');
+                const dbTest = await api.test.db();
+                console.log('Database test result:', dbTest);
+            } catch (error) {
+                console.error('Database test failed:', error);
+                Alert.alert('Error', 'Unable to connect to the database. Please try again later.');
+                return;
             }
-        } catch (error: any) {
-            console.error('Signup Error:', error);
-            if (error.message.includes('Network request failed')) {
-                Alert.alert('Error', 'Unable to connect to the server. Please check your internet connection.');
-            } else if (error.message.includes('Email already registered')) {
-                Alert.alert('Error', 'This email is already registered. Please use a different email or try logging in.');
-            } else {
-                Alert.alert('Error', error.message || 'An error occurred during signup');
-            }
+
+            // Proceed with actual signup
+            console.log('Proceeding with signup...');
+            const response = await api.auth.signup(name, email, password);
+            console.log('Signup successful:', response);
+
+            Alert.alert('Success', 'Account created successfully!', [
+                {
+                    text: 'OK',
+                    onPress: () => router.replace('/login')
+                }
+            ]);
+        } catch (error) {
+            console.error('Signup error:', error);
+            Alert.alert(
+                'Error',
+                error instanceof Error ? error.message : 'Failed to create account. Please try again.'
+            );
         } finally {
-            setIsLoading(false);
+            setLoading(false);
         }
     };
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Signup</Text>
-            <Text style={styles.subtitle}>Create your account.</Text>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Sign up to get started.</Text>
+            
             <Text style={styles.label}>NAME</Text>
             <TextInput
                 style={styles.input}
@@ -99,7 +99,10 @@ export default function SignupScreen() {
                 placeholderTextColor="#888"
                 value={name}
                 onChangeText={setName}
+                autoCapitalize="words"
+                editable={!loading}
             />
+            
             <Text style={styles.label}>EMAIL</Text>
             <TextInput
                 style={styles.input}
@@ -109,38 +112,39 @@ export default function SignupScreen() {
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                editable={!loading}
             />
+            
             <Text style={styles.label}>PASSWORD</Text>
             <TextInput
                 style={styles.input}
                 placeholder="Enter your password"
                 placeholderTextColor="#888"
-                secureTextEntry
                 value={password}
                 onChangeText={setPassword}
-            />
-            <Text style={styles.label}>CONFIRM PASSWORD</Text>
-            <TextInput
-                style={styles.input}
-                placeholder="Confirm your password"
-                placeholderTextColor="#888"
                 secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
+                editable={!loading}
             />
+
             <TouchableOpacity 
-                style={[styles.button, isLoading && styles.buttonDisabled]} 
+                style={[styles.button, loading && styles.buttonDisabled]}
                 onPress={handleSignup}
-                disabled={isLoading}
+                disabled={loading}
             >
-                <Text style={styles.buttonText}>
-                    {isLoading ? 'Signing up...' : 'Sign up'}
-                </Text>
+                {loading ? (
+                    <ActivityIndicator color={Colors.dark.text} />
+                ) : (
+                    <Text style={styles.buttonText}>Sign Up</Text>
+                )}
             </TouchableOpacity>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                <Text style={styles.link}>Already have an account?</Text>
-                <TouchableOpacity onPress={() => router.push('/login')}>
-                    <Text style={styles.link}>Log in</Text>
+
+            <View style={styles.linkContainer}>
+                <Text style={styles.link}>Already have an account? </Text>
+                <TouchableOpacity 
+                    onPress={() => router.replace('/login')}
+                    disabled={loading}
+                >
+                    <Text style={styles.link}>Login</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -181,6 +185,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         color: Colors.dark.text,
         fontSize: 16,
+        marginBottom: 15,
     },
     button: {
         width: '100%',
@@ -192,31 +197,23 @@ const styles = StyleSheet.create({
         marginTop: 20,
         marginBottom: 12,
     },
+    buttonDisabled: {
+        opacity: 0.7,
+    },
     buttonText: {
         color: Colors.dark.text,
         fontSize: 18,
         fontWeight: 'bold',
     },
+    linkContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 5,
+    },
     link: {
         color: Colors.dark.tint,
         fontSize: 15,
         marginTop: 4,
-    },
-    passwordContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#23252B',
-        borderRadius: 8,
-        paddingHorizontal: 16,
-        width: '100%',
-        height: 48,
-    },
-    passwordInput: {
-        flex: 1,
-        color: Colors.dark.text,
-        fontSize: 16,
-    },
-    buttonDisabled: {
-        opacity: 0.7,
     },
 }); 
