@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure
+from pymongo.errors import ConnectionFailure, DuplicateKeyError
 from bson import ObjectId
 import bcrypt
 import jwt
@@ -86,7 +86,6 @@ def token_required(f):
         try:
             token = token.split(' ')[1]
             data = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
-            # Use cache for user lookup
             cache_key = f"user_{data['user_id']}"
             current_user = cache.get(cache_key)
             if not current_user:
@@ -149,39 +148,50 @@ def signup():
         if not validate_password(password):
             return jsonify({'error': 'Password must be at least 8 characters long and contain uppercase, lowercase, and numbers'}), 400
 
-        if users_collection.find_one({'email': email}):
-            return jsonify({'error': 'Email already exists'}), 400
+        try:
+            if users_collection.find_one({'email': email}):
+                return jsonify({'error': 'Email already exists'}), 400
+        except Exception as e:
+            print(f"Database error during email check: {e}")
+            return jsonify({'error': 'Database error occurred'}), 500
 
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-        user = {
-            'name': name,
-            'email': email,
-            'password': hashed_password,
-            'created_at': datetime.datetime.utcnow(),
-            'last_login': None
-        }
-
-        result = users_collection.insert_one(user)
-        user_id = str(result.inserted_id)
-
-        token = jwt.encode({
-            'user_id': user_id,
-            'email': email,
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
-        }, JWT_SECRET, algorithm='HS256')
-
-        # Cache the new user
-        cache.set(f"user_{user_id}", user, timeout=300)
-
-        return jsonify({
-            'message': 'User created successfully',
-            'token': token,
-            'user': {
-                'id': user_id,
+        try:
+            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            user = {
                 'name': name,
-                'email': email
+                'email': email,
+                'password': hashed_password,
+                'created_at': datetime.datetime.utcnow(),
+                'last_login': None
             }
-        }), 201
+
+            result = users_collection.insert_one(user)
+            user_id = str(result.inserted_id)
+
+            token = jwt.encode({
+                'user_id': user_id,
+                'email': email,
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
+            }, JWT_SECRET, algorithm='HS256')
+
+            # Cache the new user
+            cache.set(f"user_{user_id}", user, timeout=300)
+
+            return jsonify({
+                'message': 'User created successfully',
+                'token': token,
+                'user': {
+                    'id': user_id,
+                    'name': name,
+                    'email': email
+                }
+            }), 201
+
+        except DuplicateKeyError:
+            return jsonify({'error': 'Email already exists'}), 400
+        except Exception as e:
+            print(f"Error during user creation: {e}")
+            return jsonify({'error': 'Error creating user'}), 500
 
     except Exception as e:
         print(f"Signup error: {str(e)}")
@@ -200,45 +210,50 @@ def login():
         if not all([email, password]):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # Try to get user from cache first
-        cache_key = f"user_email_{email}"
-        user = cache.get(cache_key)
-        if not user:
-            user = users_collection.find_one({'email': email})
-            if user:
-                cache.set(cache_key, user, timeout=300)
+        try:
+            # Try to get user from cache first
+            cache_key = f"user_email_{email}"
+            user = cache.get(cache_key)
+            if not user:
+                user = users_collection.find_one({'email': email})
+                if user:
+                    cache.set(cache_key, user, timeout=300)
 
-        if not user:
-            return jsonify({'error': 'Invalid email or password'}), 401
+            if not user:
+                return jsonify({'error': 'Invalid email or password'}), 401
 
-        if not bcrypt.checkpw(password.encode('utf-8'), user['password']):
-            return jsonify({'error': 'Invalid email or password'}), 401
+            if not bcrypt.checkpw(password.encode('utf-8'), user['password']):
+                return jsonify({'error': 'Invalid email or password'}), 401
 
-        # Update last login
-        users_collection.update_one(
-            {'_id': user['_id']},
-            {'$set': {'last_login': datetime.datetime.utcnow()}}
-        )
+            # Update last login
+            users_collection.update_one(
+                {'_id': user['_id']},
+                {'$set': {'last_login': datetime.datetime.utcnow()}}
+            )
 
-        # Update cache
-        cache.set(f"user_{user['_id']}", user, timeout=300)
-        cache.set(cache_key, user, timeout=300)
+            # Update cache
+            cache.set(f"user_{user['_id']}", user, timeout=300)
+            cache.set(cache_key, user, timeout=300)
 
-        token = jwt.encode({
-            'user_id': str(user['_id']),
-            'email': user['email'],
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
-        }, JWT_SECRET, algorithm='HS256')
+            token = jwt.encode({
+                'user_id': str(user['_id']),
+                'email': user['email'],
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
+            }, JWT_SECRET, algorithm='HS256')
 
-        return jsonify({
-            'message': 'Login successful',
-            'token': token,
-            'user': {
-                'id': str(user['_id']),
-                'name': user['name'],
-                'email': user['email']
-            }
-        }), 200
+            return jsonify({
+                'message': 'Login successful',
+                'token': token,
+                'user': {
+                    'id': str(user['_id']),
+                    'name': user['name'],
+                    'email': user['email']
+                }
+            }), 200
+
+        except Exception as e:
+            print(f"Database error during login: {e}")
+            return jsonify({'error': 'Database error occurred'}), 500
 
     except Exception as e:
         print(f"Login error: {str(e)}")
