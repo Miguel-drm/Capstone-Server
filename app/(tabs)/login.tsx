@@ -5,7 +5,7 @@ import Colors from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'https://capstone-backend.onrender.com/api';  // Replace with your deployed backend URL
+const API_URL = 'https://capstone-backend-t22z.onrender.com/api';  // Replace with your deployed backend URL
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -22,10 +22,12 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
+      console.log('Sending login request to:', `${API_URL}/login`);
       const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           email,
@@ -33,7 +35,17 @@ export default function LoginScreen() {
         }),
       });
 
-      const data = await response.json();
+      console.log('Response status:', response.status);
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('JSON Parse Error:', e);
+        throw new Error('Invalid response from server');
+      }
 
       if (!response.ok) {
         throw new Error(data.error || 'Something went wrong');
@@ -45,6 +57,7 @@ export default function LoginScreen() {
       Alert.alert('Success', 'Logged in successfully');
       router.push('/intro');
     } catch (error: any) {
+      console.error('Login Error:', error);
       Alert.alert('Error', error.message || 'An error occurred');
     } finally {
       setIsLoading(false);
