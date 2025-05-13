@@ -21,8 +21,8 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Configure Flask-Caching
 cache = Cache(app, config={
-    'CACHE_TYPE': 'simple',
-    'CACHE_DEFAULT_TIMEOUT': 300
+    'CACHE_TYPE': os.getenv('CACHE_TYPE', 'simple'),
+    'CACHE_DEFAULT_TIMEOUT': int(os.getenv('CACHE_DEFAULT_TIMEOUT', 300))
 })
 
 # MongoDB Configuration

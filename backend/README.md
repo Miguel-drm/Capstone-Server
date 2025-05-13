@@ -13,6 +13,38 @@ This is a Flask-based REST API server with MongoDB integration for user authenti
 - Health check endpoint
 - User profile endpoint
 
+## Environment Setup
+
+1. Create a `.env` file in the backend directory with the following variables:
+   ```
+   # MongoDB Configuration
+   MONGO_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>?retryWrites=true&w=majority
+
+   # JWT Configuration
+   JWT_SECRET=your_secure_jwt_secret_key_here
+
+   # Server Configuration
+   PORT=5000
+   FLASK_ENV=development
+
+   # Cache Configuration
+   CACHE_TYPE=simple
+   CACHE_DEFAULT_TIMEOUT=300
+   ```
+
+2. Replace the placeholder values with your actual configuration:
+   - `MONGO_URI`: Your MongoDB Atlas connection string
+   - `JWT_SECRET`: A secure random string for JWT token signing
+   - `PORT`: The port your server will run on
+   - `FLASK_ENV`: Set to 'development' for local development
+
+## Security Notes
+
+1. Never commit the `.env` file to version control
+2. Keep your JWT_SECRET secure and unique
+3. Use strong passwords for your MongoDB user
+4. Regularly rotate your secrets and passwords
+
 ## Prerequisites
 
 - Python 3.8 or higher
