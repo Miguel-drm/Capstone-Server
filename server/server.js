@@ -26,6 +26,16 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Server is running' });
 });
 
+// Database test endpoint
+app.get('/api/test/db', async (req, res) => {
+    try {
+        const userCount = await require('./models/User').countDocuments();
+        res.json({ success: true, userCount });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

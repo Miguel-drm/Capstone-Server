@@ -20,7 +20,7 @@ export default function SignupScreen() {
             console.log('Checking server health...');
             const data = await api.health();
             console.log('Server health response:', data);
-            setIsServerAvailable(data.status === 'healthy');
+            setIsServerAvailable(data.status === 'ok');
         } catch (error) {
             console.error('Server health check failed:', error);
             setIsServerAvailable(false);
@@ -220,7 +220,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         color: Colors.dark.text,
         fontSize: 16,
-        marginBottom: 15,
     },
     button: {
         width: '100%',

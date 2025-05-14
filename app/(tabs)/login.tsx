@@ -20,13 +20,13 @@ export default function LoginScreen() {
   const checkServerHealth = async () => {
     try {
       const data = await api.health();
-      setIsServerAvailable(data.status === 'healthy');
+      setIsServerAvailable(data.status === 'ok');
     } catch (error) {
       console.error('Server health check failed:', error);
       setIsServerAvailable(false);
     }
   };
-
+  
   const handleLogin = async () => {
     if (!isServerAvailable) {
       Alert.alert('Error', 'Server is currently unavailable. Please try again later.');

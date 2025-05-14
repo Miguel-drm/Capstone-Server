@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // API Configuration
-export const API_URL = 'https://capstone-backend-t22z.onrender.com/api';
+export const API_URL = 'https://capstone-server-5pfx.onrender.com/api';
 
 // Validation functions
 const validateEmail = (email: string): boolean => {
@@ -183,3 +183,5 @@ export const auth = {
     return userData ? JSON.parse(userData) : null;
   }
 }; 
+
+export default api;

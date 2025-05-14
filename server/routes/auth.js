@@ -7,7 +7,7 @@ const User = require('../models/User');
 // Signup route
 router.post('/signup', async (req, res) => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password, role } = req.body;
 
         // Validate input
         if (!name || !email || !password) {
@@ -34,14 +34,15 @@ router.post('/signup', async (req, res) => {
         const user = new User({
             name,
             email,
-            password: hashedPassword
+            password: hashedPassword,
+            role: role === 'admin' ? 'admin' : 'parent' // Only allow 'admin' or 'parent', default to 'parent'
         });
 
         await user.save();
 
         // Generate JWT token
         const token = jwt.sign(
-            { userId: user._id },
+            { userId: user._id, role: user.role },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -53,7 +54,8 @@ router.post('/signup', async (req, res) => {
             user: {
                 id: user._id,
                 name: user.name,
-                email: user.email
+                email: user.email,
+                role: user.role
             }
         });
     } catch (error) {
@@ -99,7 +101,7 @@ router.post('/login', async (req, res) => {
 
         // Generate JWT token
         const token = jwt.sign(
-            { userId: user._id },
+            { userId: user._id, role: user.role },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -111,9 +113,16 @@ router.post('/login', async (req, res) => {
             user: {
                 id: user._id,
                 name: user.name,
-                email: user.email
+                email: user.email,
+                role: user.role
             }
         });
+
+        if (user.role === 'admin') {
+            res.redirect('/adminDashboard');
+        } else if (user.role === 'parent') {
+            res.redirect('/ParentDashboard');
+        }
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ 
