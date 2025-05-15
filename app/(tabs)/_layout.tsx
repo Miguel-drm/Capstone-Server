@@ -42,6 +42,20 @@ export default function TabLayout() {
           headerTitle: () => <CustomTitle />,
         }}
       />
+      <Stack.Screen
+        name="ParentDashboard"
+        options={{
+          headerShown: true,
+          headerTitle: () => <CustomTitle />,
+        }}
+      />
+      <Stack.Screen
+        name="AdminDashboard"
+        options={{
+          headerShown: true,
+          headerTitle: () => <CustomTitle />,
+        }}
+      />
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="intro" options={{ headerShown: false }} />
     </Stack>

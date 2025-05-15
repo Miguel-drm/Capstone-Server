@@ -35,7 +35,7 @@ router.post('/signup', async (req, res) => {
             name,
             email,
             password: hashedPassword,
-            role: role === 'admin' ? 'admin' : 'parent' // Only allow 'admin' or 'parent', default to 'parent'
+            role: email.endsWith('@admin.com') ? 'admin' : 'parent' // Set role based on email domain
         });
 
         await user.save();
@@ -86,7 +86,7 @@ router.post('/login', async (req, res) => {
         if (!user) {
             return res.status(401).json({ 
                 success: false,
-                message: 'Invalid credentials' 
+                message: 'Invalid email or password' 
             });
         }
 
@@ -95,7 +95,7 @@ router.post('/login', async (req, res) => {
         if (!isMatch) {
             return res.status(401).json({ 
                 success: false,
-                message: 'Invalid credentials' 
+                message: 'Invalid email or password' 
             });
         }
 
@@ -118,17 +118,21 @@ router.post('/login', async (req, res) => {
             }
         });
 
-        if (user.role === 'admin') {
-            res.redirect('/adminDashboard');
-        } else if (user.role === 'parent') {
-            res.redirect('/ParentDashboard');
-        }
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('Login Error:', error);
+
+        // Try to extract a specific error message from the server response
+        let errorMessage = 'Something went wrong';
+        if (error.response && error.response.data && error.response.data.message) {
+            errorMessage = error.response.data.message;
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+
         res.status(500).json({ 
             success: false,
             message: 'Error during login',
-            error: error.message 
+            error: errorMessage 
         });
     }
 });

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { api, auth } from '../utils/api';
+import CustomModal from '@/constants/CustomModal';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -11,6 +12,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isServerAvailable, setIsServerAvailable] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'info'>('info');
+  const [modalMessage, setModalMessage] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -29,41 +33,57 @@ export default function LoginScreen() {
   
   const handleLogin = async () => {
     if (!isServerAvailable) {
-      Alert.alert('Error', 'Server is currently unavailable. Please try again later.');
+      setModalType('error');
+      setModalMessage('Server is currently unavailable. Please try again later.');
+      setModalVisible(true);
       return;
     }
-
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      setModalType('error');
+      setModalMessage('Please fill in all fields');
+      setModalVisible(true);
       return;
     }
-
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      setModalType('error');
+      setModalMessage('Please enter a valid email address');
+      setModalVisible(true);
       return;
     }
-
     setIsLoading(true);
     try {
       const data = await api.auth.login(email, password);
-      
-      // Store the token and user data
       await auth.getToken();
       if (data.user) {
         await auth.getUser();
       }
-      
-      Alert.alert('Success', 'Logged in successfully');
-      router.push('/intro');
+      setModalType('success');
+      setModalMessage('Login successful!');
+      setModalVisible(true);
+      setTimeout(() => {
+        setModalVisible(false);
+        if (data.user.role === 'admin') {
+          router.replace('/adminDashboard');
+        } else if (data.user.role === 'parent') {
+          router.replace('/ParentDashboard');
+        }
+      }, 1200);
     } catch (error: any) {
       console.error('Login Error:', error);
-      if (error.message.includes('Network request failed')) {
-        Alert.alert('Error', 'Unable to connect to the server. Please check your internet connection.');
-      } else {
-        Alert.alert('Error', error.message || 'An error occurred during login');
+      let errorMessage = 'Something went wrong';
+      if (error.response && error.response.data && error.response.data.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
       }
+      setModalType('error');
+      if (errorMessage.includes('Network request failed')) {
+        setModalMessage('Unable to connect to the server. Please check your internet connection.');
+      } else {
+        setModalMessage(errorMessage || 'An error occurred during login');
+      }
+      setModalVisible(true);
     } finally {
       setIsLoading(false);
     }
@@ -71,6 +91,12 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
+      <CustomModal
+        visible={modalVisible}
+        type={modalType}
+        message={modalMessage}
+        onClose={() => setModalVisible(false)}
+      />
       <Text style={styles.title}>Login</Text>
       <Text style={styles.subtitle}>Sign in to continue.</Text>
       <Text style={styles.label}>EMAIL</Text>

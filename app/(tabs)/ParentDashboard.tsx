@@ -11,4 +11,3 @@ const ParentDashboard = () => {
 
 export default ParentDashboard
 
-const styles = StyleSheet.create({})

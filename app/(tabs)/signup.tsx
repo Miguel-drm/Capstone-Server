@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '../utils/api';
 import Colors from '@/constants/Colors';
+import CustomModal from '@/constants/CustomModal';
 
 export default function SignupScreen() {
     const [name, setName] = useState('');
@@ -10,6 +11,9 @@ export default function SignupScreen() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [isServerAvailable, setIsServerAvailable] = useState(false);
+    const [modalVisible, setModalVisible] = useState(false);
+    const [modalType, setModalType] = useState<'success' | 'error' | 'info'>('info');
+    const [modalMessage, setModalMessage] = useState('');
 
     useEffect(() => {
         checkServerHealth();
@@ -28,21 +32,30 @@ export default function SignupScreen() {
     };
 
     const validateInputs = () => {
-        console.log('Validating inputs...');
-        console.log('Name:', name);
-        console.log('Email:', email);
-        console.log('Password length:', password.length);
-
         if (!name.trim()) {
-            Alert.alert('Error', 'Please enter your name');
+            setModalType('error');
+            setModalMessage('Please enter your name');
+            setModalVisible(true);
             return false;
         }
         if (!email.trim()) {
-            Alert.alert('Error', 'Please enter your email');
+            setModalType('error');
+            setModalMessage('Please enter your email');
+            setModalVisible(true);
+            return false;
+        }
+        // Add this for email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            setModalType('error');
+            setModalMessage('Please enter a valid email address');
+            setModalVisible(true);
             return false;
         }
         if (!password) {
-            Alert.alert('Error', 'Please enter your password');
+            setModalType('error');
+            setModalMessage('Please enter your password');
+            setModalVisible(true);
             return false;
         }
         return true;
@@ -53,13 +66,17 @@ export default function SignupScreen() {
         console.log('Server available:', isServerAvailable);
 
         if (!isServerAvailable) {
-            Alert.alert('Error', 'Server is currently unavailable. Please try again later.');
+            setModalType('error');
+            setModalMessage('Server is currently unavailable. Please try again later.');
+            setModalVisible(true);
             return;
         }
 
         try {
             if (!validateInputs()) {
-                console.log('Input validation failed');
+                setModalType('error');
+                setModalMessage('Please fill in all fields correctly.');
+                setModalVisible(true);
                 return;
             }
 
@@ -73,7 +90,9 @@ export default function SignupScreen() {
                 console.log('Database test result:', dbTest);
             } catch (error) {
                 console.error('Database test failed:', error);
-                Alert.alert('Error', 'Unable to connect to the database. Please try again later.');
+                setModalType('error');
+                setModalMessage('Unable to connect to the database. Please try again later.');
+                setModalVisible(true);
                 return;
             }
 
@@ -88,26 +107,25 @@ export default function SignupScreen() {
             const response = await api.auth.signup(name, email, password);
             console.log('Signup response:', response);
 
-            Alert.alert('Success', 'Account created successfully!', [
-                {
-                    text: 'OK',
-                    onPress: () => {
-                        console.log('Navigating to login screen...');
-                        router.replace('/login');
-                    }
-                }
-            ]);
+            setModalType('success');
+            setModalMessage('Account created successfully!');
+            setModalVisible(true);
+            setTimeout(() => {
+                setModalVisible(false);
+                router.replace('/login');
+            }, 1200);
         } catch (error) {
-            console.error('Signup error:', error);
-            console.error('Error details:', {
-                message: error instanceof Error ? error.message : 'Unknown error',
-                stack: error instanceof Error ? error.stack : undefined
-            });
-            
-            Alert.alert(
-                'Error',
-                error instanceof Error ? error.message : 'Failed to create account. Please try again.'
-            );
+            let userMessage = 'Signup failed. Please try again.';
+            if (
+                error instanceof Error &&
+                error.message &&
+                error.message.includes('Password must be at least 8 characters long')
+            ) {
+                userMessage = 'Password must be at least 8 characters long and contain uppercase, lowercase, and numbers';
+            }
+            setModalType('error');
+            setModalMessage(userMessage);
+            setModalVisible(true);
         } finally {
             setLoading(false);
         }
@@ -115,6 +133,12 @@ export default function SignupScreen() {
 
     return (
         <View style={styles.container}>
+            <CustomModal
+                visible={modalVisible}
+                type={modalType}
+                message={modalMessage}
+                onClose={() => setModalVisible(false)}
+            />
             <Text style={styles.title}>Create Account</Text>
             <Text style={styles.subtitle}>Sign up to get started.</Text>
             

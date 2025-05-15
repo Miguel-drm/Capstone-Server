@@ -4,5 +4,6 @@
             "name": "Preset Connection",
             "connectionString": "mongodb://localhost:27017"
         }
-    ]
+    ],
+    "postman.settings.dotenv-detection-notification-visibility": false
 }
