@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "capstone",
-    "slug": "capstone",
+    "name": "Phil E-Read",
+    "slug": "Phil-E-Read",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/App-Logo/logo.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -26,7 +26,7 @@
     },
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/App-Logo/logo-transparent.png"
     },
     "plugins": [
       "expo-router"

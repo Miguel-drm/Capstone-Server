@@ -35,7 +35,8 @@ router.post('/signup', async (req, res) => {
             name,
             email,
             password: hashedPassword,
-            role: email.endsWith('@admin.com') ? 'admin' : 'parent' // Set role based on email domain
+            role: email.endsWith('@admin.com') ? 'admin' : 
+                  email.endsWith('@teacher.edu.ph') ? 'teacher' : 'parent' // Set role based on email domain
         });
 
         await user.save();

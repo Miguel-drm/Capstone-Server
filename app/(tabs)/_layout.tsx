@@ -45,14 +45,21 @@ export default function TabLayout() {
       <Stack.Screen
         name="ParentDashboard"
         options={{
-          headerShown: true,
+          headerShown: false,
           headerTitle: () => <CustomTitle />,
         }}
       />
       <Stack.Screen
         name="AdminDashboard"
         options={{
-          headerShown: true,
+          headerShown: false,
+          headerTitle: () => <CustomTitle />,
+        }}
+      />
+      <Stack.Screen
+        name="teacherDashboard"
+        options={{
+          headerShown: false,
           headerTitle: () => <CustomTitle />,
         }}
       />

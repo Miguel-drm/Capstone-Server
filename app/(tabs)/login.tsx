@@ -65,6 +65,8 @@ export default function LoginScreen() {
         setModalVisible(false);
         if (data.user.role === 'admin') {
           router.replace('/adminDashboard');
+        } else if (data.user.role === 'teacher') {
+          router.replace('/teacherDashboard');
         } else if (data.user.role === 'parent') {
           router.replace('/ParentDashboard');
         }
