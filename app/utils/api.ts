@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // API Configuration
-export const API_URL = 'https://capstone-server-5pfx.onrender.com/api';
+export const API_URL = 'https://capstone-server-go3v.onrender.com/api';
 // export const API_URL = 'http://localhost:5000/api'; 
 
 // Validation functions
