@@ -58,10 +58,13 @@ export const api = {
       return data;
     },
 
-    signup: async (name: string, email: string, password: string) => {
+    signup: async (name: string, surname: string, email: string, password: string) => {
       // Validate inputs
       if (!name || name.trim().length < 2) {
         throw new Error('Name must be at least 2 characters long');
+      }
+      if (!surname || surname.trim().length < 2) {
+        throw new Error('Surname must be at least 2 characters long');
       }
       if (!validateEmail(email)) {
         throw new Error('Invalid email format');
@@ -71,12 +74,12 @@ export const api = {
       }
 
       console.log('Sending signup request to:', `${API_URL}/auth/signup`);
-      console.log('Signup data:', { name, email, password: '***' });
+      console.log('Signup data:', { name, surname, email, password: '***' });
       
       const response = await fetch(`${API_URL}/auth/signup`, {
         method: 'POST',
         headers: await getHeaders(),
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name, surname, email, password })
       });
       
       console.log('Signup response status:', response.status);

@@ -7,6 +7,7 @@ import CustomModal from '@/constants/CustomModal';
 
 export default function SignupScreen() {
     const [name, setName] = useState('');
+    const [surname, setSurname] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -38,14 +39,20 @@ export default function SignupScreen() {
             setModalVisible(true);
             return false;
         }
+        if (!surname.trim()) {
+            setModalType('error');
+            setModalMessage('Please enter your surname');
+            setModalVisible(true);
+            return false;
+        }
         if (!email.trim()) {
             setModalType('error');
             setModalMessage('Please enter your email');
             setModalVisible(true);
             return false;
         }
-        // Add this for email format validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        // Email format validation
+        const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
         if (!emailRegex.test(email)) {
             setModalType('error');
             setModalMessage('Please enter a valid email address');
@@ -55,6 +62,12 @@ export default function SignupScreen() {
         if (!password) {
             setModalType('error');
             setModalMessage('Please enter your password');
+            setModalVisible(true);
+            return false;
+        }
+        if (password.length < 6) {
+            setModalType('error');
+            setModalMessage('Password must be at least 6 characters long');
             setModalVisible(true);
             return false;
         }
@@ -74,9 +87,6 @@ export default function SignupScreen() {
 
         try {
             if (!validateInputs()) {
-                setModalType('error');
-                setModalMessage('Please fill in all fields correctly.');
-                setModalVisible(true);
                 return;
             }
 
@@ -100,11 +110,12 @@ export default function SignupScreen() {
             console.log('Proceeding with signup...');
             console.log('Sending signup request with data:', {
                 name,
+                surname,
                 email,
                 password: '***' // Don't log actual password
             });
 
-            const response = await api.auth.signup(name, email, password);
+            const response = await api.auth.signup(name, surname, email, password);
             console.log('Signup response:', response);
 
             setModalType('success');
@@ -116,12 +127,8 @@ export default function SignupScreen() {
             }, 1200);
         } catch (error) {
             let userMessage = 'Signup failed. Please try again.';
-            if (
-                error instanceof Error &&
-                error.message &&
-                error.message.includes('Password must be at least 8 characters long')
-            ) {
-                userMessage = 'Password must be at least 8 characters long and contain uppercase, lowercase, and numbers';
+            if (error instanceof Error && error.message) {
+                userMessage = error.message;
             }
             setModalType('error');
             setModalMessage(userMessage);
@@ -151,6 +158,20 @@ export default function SignupScreen() {
                 onChangeText={(text) => {
                     console.log('Name changed:', text);
                     setName(text);
+                }}
+                autoCapitalize="words"
+                editable={!loading}
+            />
+
+            <Text style={styles.label}>SURNAME</Text>
+            <TextInput
+                style={styles.input}
+                placeholder="Enter your surname"
+                placeholderTextColor="#888"
+                value={surname}
+                onChangeText={(text) => {
+                    console.log('Surname changed:', text);
+                    setSurname(text);
                 }}
                 autoCapitalize="words"
                 editable={!loading}
