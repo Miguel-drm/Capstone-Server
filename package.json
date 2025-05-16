@@ -7,7 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "expo:build": "npx expo export",
+    "expo:build": "npx expo export --output-dir dist --platform web",
     "test": "jest --watchAll"
   },
   "jest": {
