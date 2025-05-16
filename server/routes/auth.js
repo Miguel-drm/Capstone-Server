@@ -7,7 +7,7 @@ const User = require('../models/User');
 // Signup route
 router.post('/signup', async (req, res) => {
     try {
-        const { name, email, password, role } = req.body;
+        const { name, surname, email, password } = req.body;
 
         // Validate input
         if (!name || !email || !password) {
@@ -33,6 +33,7 @@ router.post('/signup', async (req, res) => {
         // Create new user
         const user = new User({
             name,
+            surname,
             email,
             password: hashedPassword,
             role: email.endsWith('@admin.com') ? 'admin' : 
@@ -55,6 +56,7 @@ router.post('/signup', async (req, res) => {
             user: {
                 id: user._id,
                 name: user.name,
+                surname: user.surname,
                 email: user.email,
                 role: user.role
             }
@@ -114,6 +116,7 @@ router.post('/login', async (req, res) => {
             user: {
                 id: user._id,
                 name: user.name,
+                surname: user.surname,
                 email: user.email,
                 role: user.role
             }
