@@ -16,6 +16,15 @@ const validatePassword = (password: string): boolean => {
   return regex.test(password);
 };
 
+// Helper function to handle API responses
+const handleResponse = async (response: Response) => {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
+
 // API Headers
 export const getHeaders = async () => {
   const token = await AsyncStorage.getItem('userToken');
@@ -31,68 +40,86 @@ export const api = {
   // Auth endpoints
   auth: {
     login: async (email: string, password: string) => {
-      if (!validateEmail(email)) {
-        throw new Error('Invalid email format');
-      }
-      if (!password) {
-        throw new Error('Password is required');
-      }
+      try {
+        if (!validateEmail(email)) {
+          throw new Error('Invalid email format');
+        }
+        if (!password) {
+          throw new Error('Password is required');
+        }
 
-      console.log('Attempting login for:', email);
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: await getHeaders(),
-        body: JSON.stringify({ email, password })
-      });
-      
-      console.log('Login response status:', response.status);
-      const data = await handleResponse(response);
-      console.log('Login response data:', data);
+        console.log('Attempting login for:', email);
+        const response = await fetch(`${API_URL}/auth/login`, {
+          method: 'POST',
+          headers: await getHeaders(),
+          body: JSON.stringify({ email, password }),
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        });
+        
+        console.log('Login response status:', response.status);
+        const data = await handleResponse(response);
+        console.log('Login response data:', data);
 
-      if (data.token) {
-        await AsyncStorage.setItem('userToken', data.token);
+        if (data.token) {
+          await AsyncStorage.setItem('userToken', data.token);
+        }
+        if (data.user) {
+          await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+        }
+        return data;
+      } catch (error: any) {
+        console.error('Login error:', error);
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out. Please try again.');
+        }
+        throw error;
       }
-      if (data.user) {
-        await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-      }
-      return data;
     },
 
     signup: async (name: string, surname: string, email: string, password: string) => {
-      // Validate inputs
-      if (!name || name.trim().length < 2) {
-        throw new Error('Name must be at least 2 characters long');
-      }
-      if (!surname || surname.trim().length < 2) {
-        throw new Error('Surname must be at least 2 characters long');
-      }
-      if (!validateEmail(email)) {
-        throw new Error('Invalid email format');
-      }
-      if (!validatePassword(password)) {
-        throw new Error('Password must be at least 8 characters long and contain uppercase, lowercase, and numbers');
-      }
+      try {
+        // Validate inputs
+        if (!name || name.trim().length < 2) {
+          throw new Error('Name must be at least 2 characters long');
+        }
+        if (!surname || surname.trim().length < 2) {
+          throw new Error('Surname must be at least 2 characters long');
+        }
+        if (!validateEmail(email)) {
+          throw new Error('Invalid email format');
+        }
+        if (!validatePassword(password)) {
+          throw new Error('Password must be at least 8 characters long and contain uppercase, lowercase, and numbers');
+        }
 
-      console.log('Sending signup request to:', `${API_URL}/auth/signup`);
-      console.log('Signup data:', { name, surname, email, password: '***' });
-      
-      const response = await fetch(`${API_URL}/auth/signup`, {
-        method: 'POST',
-        headers: await getHeaders(),
-        body: JSON.stringify({ name, surname, email, password })
-      });
-      
-      console.log('Signup response status:', response.status);
-      const data = await handleResponse(response);
-      console.log('Signup response data:', data);
+        console.log('Sending signup request to:', `${API_URL}/auth/signup`);
+        console.log('Signup data:', { name, surname, email, password: '***' });
+        
+        const response = await fetch(`${API_URL}/auth/signup`, {
+          method: 'POST',
+          headers: await getHeaders(),
+          body: JSON.stringify({ name, surname, email, password }),
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        });
+        
+        console.log('Signup response status:', response.status);
+        const data = await handleResponse(response);
+        console.log('Signup response data:', data);
 
-      if (data.token) {
-        await AsyncStorage.setItem('userToken', data.token);
+        if (data.token) {
+          await AsyncStorage.setItem('userToken', data.token);
+        }
+        if (data.user) {
+          await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+        }
+        return data;
+      } catch (error: any) {
+        console.error('Signup error:', error);
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out. Please try again.');
+        }
+        throw error;
       }
-      if (data.user) {
-        await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-      }
-      return data;
     },
 
     logout: async () => {
@@ -125,8 +152,18 @@ export const api = {
 
   // Health check
   health: async () => {
-    const response = await fetch(`${API_URL}/health`);
-    return handleResponse(response);
+    try {
+      const response = await fetch(`${API_URL}/health`, {
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      });
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Health check error:', error);
+      if (error.name === 'AbortError') {
+        throw new Error('Server health check timed out');
+      }
+      throw error;
+    }
   },
 
   // Test endpoints
@@ -144,31 +181,6 @@ export const api = {
       return handleResponse(response);
     }
   }
-};
-
-// Response handler
-const handleResponse = async (response: Response) => {
-  const text = await response.text();
-  let data;
-  
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch (e) {
-    console.error('Error parsing response:', e);
-    console.error('Raw response:', text);
-    throw new Error('Invalid response from server');
-  }
-
-  if (!response.ok) {
-    console.error('API Error:', {
-      status: response.status,
-      statusText: response.statusText,
-      data: data
-    });
-    throw new Error(data.error || 'Something went wrong');
-  }
-
-  return data;
 };
 
 // Auth state management
