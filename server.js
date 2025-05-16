@@ -14,16 +14,45 @@ connectDB();
 
 const app = express();
 
+// CORS configuration
+app.use(cors({
+    origin: ['https://capstone-client.onrender.com', 'http://localhost:3000'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
+
 // Middleware
-app.use(cors());
 app.use(express.json());
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        success: false,
+        message: 'Something went wrong!',
+        error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    });
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', message: 'Server is running' });
+    try {
+        const dbState = mongoose.connection.readyState;
+        res.json({ 
+            status: 'ok', 
+            message: 'Server is running',
+            database: dbState === 1 ? 'connected' : 'disconnected'
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            status: 'error',
+            message: 'Server health check failed',
+            error: error.message
+        });
+    }
 });
 
 // Database test endpoint
