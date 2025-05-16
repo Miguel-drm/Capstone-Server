@@ -16,8 +16,9 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-    origin: ['https://capstone-client.onrender.com', 'http://localhost:3000'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: '*', // Allow all origins during development
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
 
