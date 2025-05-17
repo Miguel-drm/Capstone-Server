@@ -18,10 +18,14 @@ const studentSchema = new mongoose.Schema({
     sparse: true,
     default: null
   },
-  grade: {
+  educationLevel: {
     type: String,
-    required: [true, 'Grade is required'],
-    trim: true
+    required: [true, 'Education Level is required'],
+    trim: true,
+    enum: {
+      values: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'],
+      message: 'Education Level must be Grade 1, Grade 2, Grade 3, or Grade 4'
+    }
   },
 }, {
   timestamps: true
