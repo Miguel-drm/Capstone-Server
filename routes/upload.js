@@ -101,7 +101,7 @@ async function importStudentsToDatabase(students) {
         console.log('Cleared existing students');
 
         // Insert new students in batches
-        const batchSize = 100;
+        const batchSize = 50; // Reduced batch size for better error handling
         const batches = [];
         
         for (let i = 0; i < students.length; i += batchSize) {
@@ -109,22 +109,65 @@ async function importStudentsToDatabase(students) {
         }
 
         const results = [];
-        for (const batch of batches) {
-            const batchResult = await Student.insertMany(batch, { ordered: false });
-            results.push(...batchResult);
-            console.log(`Inserted batch of ${batch.length} students`);
+        const errors = [];
+
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex];
+            try {
+                // Try to insert the batch
+                const batchResult = await Student.insertMany(batch, { 
+                    ordered: false, // Continue processing even if some documents fail
+                    rawResult: true // Get detailed result information
+                });
+                
+                if (batchResult.insertedCount > 0) {
+                    results.push(...batchResult.insertedIds);
+                    console.log(`Successfully inserted batch ${batchIndex + 1} with ${batchResult.insertedCount} students`);
+                }
+
+                // Check for write errors
+                if (batchResult.writeErrors && batchResult.writeErrors.length > 0) {
+                    batchResult.writeErrors.forEach(err => {
+                        const student = batch[err.index];
+                        errors.push({
+                            row: batchIndex * batchSize + err.index + 1,
+                            student: `${student.name} ${student.surname}`,
+                            error: err.errmsg
+                        });
+                    });
+                }
+            } catch (batchError) {
+                console.error(`Error processing batch ${batchIndex + 1}:`, batchError);
+                // Try inserting one by one if batch insert fails
+                for (let i = 0; i < batch.length; i++) {
+                    try {
+                        const student = batch[i];
+                        const newStudent = await Student.create(student);
+                        results.push(newStudent._id);
+                        console.log(`Successfully inserted student: ${student.name} ${student.surname}`);
+                    } catch (singleError) {
+                        errors.push({
+                            row: batchIndex * batchSize + i + 1,
+                            student: `${batch[i].name} ${batch[i].surname}`,
+                            error: singleError.message
+                        });
+                    }
+                }
+            }
+        }
+
+        // If we have any errors, throw them with details
+        if (errors.length > 0) {
+            const errorMessage = errors.map(err => 
+                `Row ${err.row} (${err.student}): ${err.error}`
+            ).join('\n');
+            throw new Error(`Some students could not be inserted:\n${errorMessage}`);
         }
 
         return results;
     } catch (error) {
-        if (error.writeErrors) {
-            const errors = error.writeErrors.map(err => ({
-                row: err.index,
-                error: err.errmsg
-            }));
-            throw new Error(`Database insertion errors: ${JSON.stringify(errors)}`);
-        }
-        throw new Error(`Database error: ${error.message}`);
+        console.error('Database insertion error:', error);
+        throw error;
     }
 }
 
