@@ -40,19 +40,28 @@ const handleMulterError = (err, req, res, next) => {
 
 // Route for handling Excel file upload
 router.post('/upload', upload.single('file'), handleMulterError, async (req, res) => {
+  console.log('Received upload request');
+  console.log('Request headers:', req.headers);
+  console.log('Request file:', req.file);
+
   try {
     if (!req.file) {
+      console.log('No file received');
       return res.status(400).json({ 
         success: false, 
         message: 'Please upload an Excel file' 
       });
     }
 
+    console.log('Processing file:', req.file.originalname);
+
     // Read the Excel file
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(worksheet);
+
+    console.log('Excel data rows:', data.length);
 
     if (data.length === 0) {
       return res.status(400).json({
@@ -69,12 +78,15 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
       grade: row.Grade || row.grade
     }));
 
+    console.log('Processed students:', students.length);
+
     // Validate required fields
     const invalidStudents = students.filter(student => 
       !student.name || !student.surname || !student.grade
     );
 
     if (invalidStudents.length > 0) {
+      console.log('Invalid students found:', invalidStudents);
       return res.status(400).json({
         success: false,
         message: 'Some records are missing required fields',
@@ -84,6 +96,7 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 
     // Insert students into database
     const result = await Student.insertMany(students, { ordered: false });
+    console.log('Successfully inserted students:', result.length);
 
     res.status(200).json({
       success: true,
