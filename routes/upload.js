@@ -102,9 +102,9 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
       console.log(`Processing row ${index + 1}:`, row);
       
       const student = {
-        name: row[0] || '', // First column is name
-        surname: row[1] || '', // Second column is surname
-        grade: row[2] || '', // Third column is grade
+        name: String(row[0] || ''), // First column is name
+        surname: String(row[1] || ''), // Second column is surname
+        grade: String(row[2] || '') // Third column is grade
       };
 
       console.log(`Processed student ${index + 1}:`, student);
@@ -133,7 +133,7 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 
     // Insert students into database
     console.log('Attempting to insert students:', students.length);
-    const result = await Student.insertMany(students);
+    const result = await Student.insertMany(students, { ordered: false });
     console.log('Successfully inserted students:', result.length);
 
     // Fetch all students to verify
