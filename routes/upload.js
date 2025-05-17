@@ -12,23 +12,37 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Accept all Excel file types
+    console.log('Received file in multer:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      fieldname: file.fieldname
+    });
+
+    // Check file extension
+    const ext = file.originalname.split('.').pop().toLowerCase();
+    if (ext === 'xlsx' || ext === 'xls') {
+      return cb(null, true);
+    }
+
+    // If extension check fails, check mimetype
     const allowedMimeTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-      'application/vnd.ms-excel', // .xls
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
       'application/excel',
       'application/x-excel',
       'application/x-msexcel'
     ];
 
-    console.log('Received file type:', file.mimetype);
-    
     if (allowedMimeTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      console.log('Invalid file type:', file.mimetype);
-      cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
+      return cb(null, true);
     }
+
+    console.log('File rejected:', {
+      name: file.originalname,
+      type: file.mimetype
+    });
+    
+    cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
   }
 });
 
@@ -53,7 +67,11 @@ const handleMulterError = (err, req, res, next) => {
 router.post('/upload', upload.single('file'), handleMulterError, async (req, res) => {
   console.log('Received upload request');
   console.log('Request headers:', req.headers);
-  console.log('Request file:', req.file);
+  console.log('Request file:', req.file ? {
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size
+  } : 'No file');
 
   try {
     if (!req.file) {
