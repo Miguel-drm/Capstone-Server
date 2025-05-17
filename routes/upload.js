@@ -101,10 +101,11 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     const students = data.slice(1).map((row, index) => {
       console.log(`Processing row ${index + 1}:`, row);
       
+      // Ensure all values are strings and handle empty values
       const student = {
-        name: String(row[0] || ''), // First column is name
-        surname: String(row[1] || ''), // Second column is surname
-        grade: String(row[2] || '') // Third column is grade
+        name: String(row[0] || '').trim(),
+        surname: String(row[1] || '').trim(),
+        grade: String(row[2] || '').trim()
       };
 
       console.log(`Processed student ${index + 1}:`, student);
@@ -127,24 +128,38 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
       });
     }
 
-    // Clear existing students before inserting new ones
-    await Student.deleteMany({});
-    console.log('Cleared existing students');
+    try {
+      // Clear existing students before inserting new ones
+      await Student.deleteMany({});
+      console.log('Cleared existing students');
 
-    // Insert students into database
-    console.log('Attempting to insert students:', students.length);
-    const result = await Student.insertMany(students, { ordered: false });
-    console.log('Successfully inserted students:', result.length);
+      // Insert students into database one by one to handle errors better
+      const insertedStudents = [];
+      for (const student of students) {
+        try {
+          const newStudent = await Student.create(student);
+          insertedStudents.push(newStudent);
+          console.log('Inserted student:', newStudent.name, newStudent.surname);
+        } catch (err) {
+          console.error('Error inserting student:', student, err);
+        }
+      }
 
-    // Fetch all students to verify
-    const allStudents = await Student.find({});
-    console.log('Verification - Total students in database:', allStudents.length);
+      console.log('Successfully inserted students:', insertedStudents.length);
 
-    res.status(200).json({
-      success: true,
-      message: 'Students imported successfully',
-      count: result.length
-    });
+      // Fetch all students to verify
+      const allStudents = await Student.find({});
+      console.log('Verification - Total students in database:', allStudents.length);
+
+      res.status(200).json({
+        success: true,
+        message: 'Students imported successfully',
+        count: insertedStudents.length
+      });
+    } catch (dbError) {
+      console.error('Database operation error:', dbError);
+      throw dbError;
+    }
 
   } catch (error) {
     console.error('Error processing Excel file:', error);
