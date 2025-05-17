@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import Colors from '@/constants/Colors';
 import CustomModal from '@/constants/CustomModal';
+import InstructionModal from '@/constants/InstructionModal';
 import { api, API_URL } from '../../utils/api';    
 
 interface Student {
@@ -17,9 +18,10 @@ interface Student {
 export default function ClassListScreen() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalType, setModalType] = useState<'success' | 'error' | 'info'>('info');
-  const [modalMessage, setModalMessage] = useState('');
+  const [alertModalVisible, setAlertModalVisible] = useState(false);
+  const [alertModalType, setAlertModalType] = useState<'success' | 'error' | 'info'>('info');
+  const [alertModalMessage, setAlertModalMessage] = useState('');
+  const [instructionModalVisible, setInstructionModalVisible] = useState(false);
 
   useEffect(() => {
     fetchStudents();
@@ -52,9 +54,9 @@ export default function ClassListScreen() {
       setStudents(data.students);
     } catch (error: any) {
       console.error('Error fetching students:', error);
-      setModalType('error');
-      setModalMessage(error.message || 'Failed to fetch students. Please try again.');
-      setModalVisible(true);
+      setAlertModalType('error');
+      setAlertModalMessage(error.message || 'Failed to fetch students. Please try again.');
+      setAlertModalVisible(true);
     } finally {
       setLoading(false);
     }
@@ -130,20 +132,24 @@ export default function ClassListScreen() {
         throw new Error(data.message || 'Failed to upload file');
       }
 
-      setModalType('success');
-      setModalMessage(`Successfully imported ${data.count} students!`);
-      setModalVisible(true);
+      setAlertModalType('success');
+      setAlertModalMessage(`Successfully imported ${data.count} students!`);
+      setAlertModalVisible(true);
 
       // Refresh the student list
       fetchStudents();
     } catch (error: any) {
       console.error('Upload error:', error);
-      setModalType('error');
-      setModalMessage(error.message || 'Failed to import Excel file. Please try again.');
-      setModalVisible(true);
+      setAlertModalType('error');
+      setAlertModalMessage(error.message || 'Failed to import Excel file. Please try again.');
+      setAlertModalVisible(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const showExcelInfo = () => {
+    setInstructionModalVisible(true);
   };
 
   const renderStudentItem = ({ item }: { item: Student }) => (
@@ -169,15 +175,43 @@ export default function ClassListScreen() {
   return (
     <View style={styles.container}>
       <CustomModal
-        visible={modalVisible}
-        type={modalType}
-        message={modalMessage}
-        onClose={() => setModalVisible(false)}
+        visible={alertModalVisible}
+        type={alertModalType}
+        message={alertModalMessage}
+        onClose={() => setAlertModalVisible(false)}
+        duration={2000}
+      />
+
+      <InstructionModal
+        visible={instructionModalVisible}
+        message={
+          'Excel File Structure Guide:\n\n' +
+          '1. Required Columns:\n' +
+          '   - Name\n' +
+          '   - Surname\n' +
+          '   - Email\n' +
+          '   - Grade\n\n' +
+          '2. File Format:\n' +
+          '   - .xlsx or .xls files only\n' +
+          '   - First row should contain headers\n' +
+          '   - No empty rows between data\n\n' +
+          '3. Data Format:\n' +
+          '   - Email must be valid format\n' +
+          '   - Grade should be a valid grade value\n' +
+          '   - Names should not contain special characters\n\n'
+        }
+        onClose={() => setInstructionModalVisible(false)}
       />
 
       <View style={styles.header}>
         <Text style={styles.title}>Class List</Text>
         <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            style={styles.headerButton}
+            onPress={showExcelInfo}
+          >
+            <Ionicons name="information-circle-outline" size={24} color={Colors.light.tint} />
+          </TouchableOpacity>
           <TouchableOpacity 
             style={styles.headerButton}
             onPress={handleExcelImport}

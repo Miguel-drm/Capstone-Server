@@ -47,7 +47,6 @@ const TeacherDashboard = () => {
     { icon: 'list-outline', label: 'Class List', route: '/(tabs)/(tcd)/classlist' },
     { icon: 'book-outline', label: 'Insert Story', route: '/(tabs)/(tcd)/reading' },
     { icon: 'create-outline', label: 'Make a Test', route: '/(tabs)/(tcd)/chat' },
-    { icon: 'people-outline', label: 'Consultation', route: '/consultation' },
     { icon: 'download-outline', label: 'Export Data', route: '/exportData' },
   ]
 
@@ -116,29 +115,11 @@ const TeacherDashboard = () => {
         </View>
         <ScrollView style={styles.content}>
           <Text style={styles.welcomeText}>Welcome, {userName || 'Teacher'}</Text>
-          
-          {/* Shortcuts Grid */}
-          <View style={styles.shortcutsContainer}>
-            <Text style={styles.sectionTitle}>Quick Access</Text>
-            <View style={styles.shortcutsGrid}>
-              {menuItems.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.shortcutCard}
-                  onPress={() => {
-                    router.push(item.route);
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <View style={styles.shortcutIconContainer}>
-                    <Ionicons name={item.icon} size={32} color="#4A90E2" />
-                  </View>
-                  <Text style={styles.shortcutLabel}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
         </ScrollView>
+
+        <View style={styles.content}>
+        <Text style={styles.subtitle}>Teacher's Main Dashboard</Text>
+      </View>
       </View>
     </SafeAreaView>
   )
@@ -306,6 +287,17 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     fontWeight: '500',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
   },
 })
  
