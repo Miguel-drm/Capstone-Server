@@ -84,37 +84,39 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 
     console.log('Processing file:', req.file.originalname);
 
-    // Read the Excel file
+    // Read the Excel file with header row
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const data = xlsx.utils.sheet_to_json(worksheet);
+    
+    // Convert to JSON with header row
+    const data = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
+    console.log('Raw Excel data:', data);
 
-    console.log('Excel data rows:', data.length);
-    console.log('First row of data:', data[0]);
+    // Get headers from first row
+    const headers = data[0];
+    console.log('Excel headers:', headers);
 
-    if (data.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Excel file is empty'
-      });
-    }
-
-    // Process and validate the data
-    const students = data.map(row => {
-      // Log each row being processed
-      console.log('Processing row:', row);
+    // Process remaining rows
+    const students = data.slice(1).map((row, index) => {
+      console.log(`Processing row ${index + 1}:`, row);
       
+      // Create student object based on header positions
       const student = {
-        name: row.Name || row.name || row['Student Name'] || row['StudentName'],
-        surname: row.Surname || row.surname || row['Last Name'] || row['LastName'],
-        grade: row.Grade || row.grade || row['Student Grade'] || row['StudentGrade'],
-        // Only include email if it exists
-        ...(row.Email || row.email || row['Student Email'] || row['StudentEmail'] ? 
-          { email: row.Email || row.email || row['Student Email'] || row['StudentEmail'] } : {})
+        name: row[headers.indexOf('Name')] || row[headers.indexOf('name')] || row[headers.indexOf('Student Name')] || '',
+        surname: row[headers.indexOf('Surname')] || row[headers.indexOf('surname')] || row[headers.indexOf('Last Name')] || '',
+        grade: row[headers.indexOf('Grade')] || row[headers.indexOf('grade')] || row[headers.indexOf('Student Grade')] || '',
       };
 
-      console.log('Processed student:', student);
+      // Only add email if the column exists and has a value
+      const emailIndex = headers.findIndex(h => 
+        ['Email', 'email', 'Student Email'].includes(h)
+      );
+      if (emailIndex !== -1 && row[emailIndex]) {
+        student.email = row[emailIndex];
+      }
+
+      console.log(`Processed student ${index + 1}:`, student);
       return student;
     });
 
@@ -138,7 +140,6 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     console.log('Attempting to insert students:', students.length);
     const result = await Student.insertMany(students, { 
       ordered: false,
-      // Don't throw error on duplicate emails
       writeConcern: { w: 0 }
     });
     console.log('Successfully inserted students:', result.length);
@@ -151,7 +152,6 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 
   } catch (error) {
     console.error('Error processing Excel file:', error);
-    
     res.status(500).json({
       success: false,
       message: 'Error processing Excel file',
