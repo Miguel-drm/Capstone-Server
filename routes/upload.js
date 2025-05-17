@@ -89,23 +89,26 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     
-    // Convert to JSON with header row
-    const data = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
-    console.log('Raw Excel data:', data);
+    // Convert to JSON without header row
+    const data = xlsx.utils.sheet_to_json(worksheet);
+    console.log('Total rows in Excel:', data.length);
+    console.log('First row sample:', data[0]);
 
-    // Get headers from first row
-    const headers = data[0];
-    console.log('Excel headers:', headers);
+    if (data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Excel file is empty'
+      });
+    }
 
-    // Process remaining rows
-    const students = data.slice(1).map((row, index) => {
+    // Process and validate the data
+    const students = data.map((row, index) => {
       console.log(`Processing row ${index + 1}:`, row);
       
-      // Ensure all values are strings and handle empty values
       const student = {
-        name: String(row[0] || '').trim(),
-        surname: String(row[1] || '').trim(),
-        grade: String(row[2] || '').trim()
+        name: String(row.name || row.Name || '').trim(),
+        surname: String(row.surname || row.Surname || '').trim(),
+        grade: String(row.grade || row.Grade || '').trim()
       };
 
       console.log(`Processed student ${index + 1}:`, student);
@@ -133,19 +136,10 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
       await Student.deleteMany({});
       console.log('Cleared existing students');
 
-      // Insert students into database one by one to handle errors better
-      const insertedStudents = [];
-      for (const student of students) {
-        try {
-          const newStudent = await Student.create(student);
-          insertedStudents.push(newStudent);
-          console.log('Inserted student:', newStudent.name, newStudent.surname);
-        } catch (err) {
-          console.error('Error inserting student:', student, err);
-        }
-      }
-
-      console.log('Successfully inserted students:', insertedStudents.length);
+      // Insert all students at once
+      console.log('Attempting to insert students:', students.length);
+      const result = await Student.insertMany(students);
+      console.log('Successfully inserted students:', result.length);
 
       // Fetch all students to verify
       const allStudents = await Student.find({});
@@ -154,7 +148,7 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
       res.status(200).json({
         success: true,
         message: 'Students imported successfully',
-        count: insertedStudents.length
+        count: result.length
       });
     } catch (dbError) {
       console.error('Database operation error:', dbError);
