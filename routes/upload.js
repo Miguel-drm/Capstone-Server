@@ -71,62 +71,39 @@ async function importExcelData2MongoDB(fileBuffer) {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
-        // Convert to JSON with header row
-        const data = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
-        console.log('Raw Excel data:', data);
+        // Convert to JSON
+        const data = xlsx.utils.sheet_to_json(worksheet);
+        console.log('Total rows in Excel:', data.length);
 
-        // Get headers from first row
-        const headers = data[0];
-        console.log('Excel headers:', headers);
-
-        if (data.length <= 1) {
-            throw new Error('Excel file is empty or contains only headers');
+        if (data.length === 0) {
+            throw new Error('Excel file is empty');
         }
 
-        // Process remaining rows
-        const students = data.slice(1).map((row, index) => {
-            console.log(`Processing row ${index + 1}:`, row);
-            
-            const student = {
-                name: String(row[0] || '').trim(),
-                surname: String(row[1] || '').trim(),
-                grade: String(row[2] || '').trim()
-            };
+        // Process the data
+        const students = data.map(row => ({
+            name: row.name || row.Name || '',
+            surname: row.surname || row.Surname || '',
+            grade: row.grade || row.Grade || ''
+        }));
 
-            console.log(`Processed student ${index + 1}:`, student);
-            return student;
-        });
-
-        console.log('Total processed students:', students.length);
-
-        // Validate required fields
+        // Validate data
         const invalidStudents = students.filter(student => 
             !student.name || !student.surname || !student.grade
         );
 
         if (invalidStudents.length > 0) {
-            throw new Error(`Found ${invalidStudents.length} invalid records. All fields (name, surname, grade) are required.`);
+            throw new Error(`Found ${invalidStudents.length} invalid records. All fields are required.`);
         }
 
         // Clear existing students
         await Student.deleteMany({});
         console.log('Cleared existing students');
 
-        // Insert students into database
-        const insertedStudents = [];
-        for (const student of students) {
-            try {
-                const newStudent = await Student.create(student);
-                insertedStudents.push(newStudent);
-                console.log('Inserted student:', newStudent.name, newStudent.surname);
-            } catch (err) {
-                console.error('Error inserting student:', student, err);
-            }
-        }
+        // Insert new students
+        const result = await Student.insertMany(students);
+        console.log('Successfully inserted students:', result.length);
 
-        console.log('Successfully inserted students:', insertedStudents.length);
-        return insertedStudents;
-
+        return result;
     } catch (error) {
         console.error('Error in importExcelData2MongoDB:', error);
         throw error;
