@@ -162,8 +162,11 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 
 // Route for getting all students
 router.get('/students', async (req, res) => {
+  console.log('Received request to fetch students');
   try {
     const students = await Student.find({}).sort({ name: 1, surname: 1 });
+    console.log(`Found ${students.length} students`);
+    
     res.status(200).json({
       success: true,
       students: students
@@ -172,7 +175,7 @@ router.get('/students', async (req, res) => {
     console.error('Error fetching students:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching students',
+      message: 'Error fetching students from database',
       error: error.message
     });
   }
