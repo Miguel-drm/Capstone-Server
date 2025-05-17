@@ -48,17 +48,7 @@ function validateStudent(student) {
             errors.push('Education Level must be Grade 1, Grade 2, Grade 3, or Grade 4');
         }
     }
-    // Email is optional, but if provided, validate format
-    if (student.email && !isValidEmail(student.email)) {
-        errors.push('Invalid email format');
-    }
     return errors;
-}
-
-// Helper function to validate email format
-function isValidEmail(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
 }
 
 // Function to process Excel data
@@ -96,14 +86,6 @@ async function processExcelData(fileBuffer) {
                     surname: String(row[headers.indexOf('surname')] || '').trim(),
                     grade: String(row[headers.indexOf('grade')] || '').trim()
                 };
-
-                // Only add email if it exists and is not empty
-                if (headers.includes('email') && row[headers.indexOf('email')]) {
-                    const email = String(row[headers.indexOf('email')]).trim().toLowerCase();
-                    if (email && isValidEmail(email)) {
-                        student.email = email;
-                    }
-                }
 
                 const validationErrors = validateStudent(student);
                 if (validationErrors.length > 0) {
@@ -243,12 +225,20 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             student.importBatchId = importBatchId;
         });
 
+        // Filter out students that already exist (by name + surname)
+        const existingStudents = await Student.find({
+          $or: students.map(s => ({ name: s.name, surname: s.surname }))
+        }, { name: 1, surname: 1 });
+        const existingSet = new Set(existingStudents.map(s => `${s.name}|${s.surname}`));
+        const uniqueStudents = students.filter(s => !existingSet.has(`${s.name}|${s.surname}`));
+        console.log(`Filtered out ${students.length - uniqueStudents.length} duplicate students`);
+
         // Get count of existing students
         const existingCount = await Student.countDocuments();
         console.log('Existing students in database:', existingCount);
 
         // Import to database
-        const insertedStudents = await importStudentsToDatabase(students);
+        const insertedStudents = await importStudentsToDatabase(uniqueStudents);
         console.log(`Successfully inserted ${insertedStudents.length} new students`);
 
         // Get total count after insertion
@@ -290,6 +280,42 @@ router.get('/students', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error fetching students'
+        });
+    }
+});
+
+// Route for getting students grouped by importBatchId
+router.get('/grouped', async (req, res) => {
+    try {
+        const grouped = await Student.aggregate([
+            {
+                $group: {
+                    _id: '$importBatchId',
+                    students: { $push: {
+                        _id: '$_id',
+                        name: '$name',
+                        surname: '$surname',
+                        email: '$email',
+                        grade: '$grade',
+                        createdAt: '$createdAt',
+                        updatedAt: '$updatedAt'
+                    } }
+                }
+            },
+            { $sort: { '_id': -1 } }
+        ]);
+        res.status(200).json({
+            success: true,
+            groups: grouped.map(g => ({
+                importBatchId: g._id,
+                students: g.students
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching grouped students:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching grouped students'
         });
     }
 });
