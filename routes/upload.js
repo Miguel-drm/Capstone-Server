@@ -8,6 +8,9 @@ const Student = require('../models/Student');
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
         file.mimetype === 'application/vnd.ms-excel') {
@@ -18,8 +21,25 @@ const upload = multer({
   }
 });
 
+// Error handling middleware for multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File size too large. Maximum size is 5MB'
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+  next(err);
+};
+
 // Route for handling Excel file upload
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', upload.single('file'), handleMulterError, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ 
@@ -33,6 +53,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(worksheet);
+
+    if (data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Excel file is empty'
+      });
+    }
 
     // Process and validate the data
     const students = data.map(row => ({
@@ -58,7 +85,6 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     // Insert students into database
     const result = await Student.insertMany(students, { ordered: false });
 
-    res.setHeader('Content-Type', 'application/json');
     res.status(200).json({
       success: true,
       message: 'Students imported successfully',
@@ -75,7 +101,6 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       });
     }
 
-    res.setHeader('Content-Type', 'application/json');
     res.status(500).json({
       success: false,
       message: 'Error processing Excel file',
