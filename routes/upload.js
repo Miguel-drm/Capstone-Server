@@ -32,8 +32,20 @@ function validateStudent(student) {
     }
     if (!student.grade || typeof student.grade !== 'string' || student.grade.trim().length === 0) {
         errors.push('Education Level is required');
-    } else if (!['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'].includes(student.grade)) {
-        errors.push('Education Level must be Grade 1, Grade 2, Grade 3, or Grade 4');
+    } else {
+        // Normalize the grade format
+        const normalizedGrade = student.grade.trim()
+            .replace(/^grade\s*/i, '') // Remove "grade" prefix if present
+            .replace(/\s+/g, ' ') // Normalize spaces
+            .trim();
+        
+        // Convert to the required format
+        const validGrades = ['1', '2', '3', '4'];
+        if (validGrades.includes(normalizedGrade)) {
+            student.grade = `Grade ${normalizedGrade}`;
+        } else {
+            errors.push('Education Level must be Grade 1, Grade 2, Grade 3, or Grade 4');
+        }
     }
     // Email is optional, but if provided, validate format
     if (student.email && !isValidEmail(student.email)) {
