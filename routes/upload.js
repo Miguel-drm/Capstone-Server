@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const xlsx = require('xlsx');
 const Student = require('../models/Student');
+const { v4: uuidv4 } = require('uuid');
 
 // Configure multer for file upload
 const storage = multer.memoryStorage();
@@ -235,6 +236,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const students = await processExcelData(req.file.buffer);
         console.log(`Processed ${students.length} valid students`);
 
+        // Generate a unique importBatchId for this upload
+        const importBatchId = uuidv4();
+        // Assign importBatchId to each student
+        students.forEach(student => {
+            student.importBatchId = importBatchId;
+        });
+
         // Get count of existing students
         const existingCount = await Student.countDocuments();
         console.log('Existing students in database:', existingCount);
@@ -252,7 +260,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             message: 'Students imported successfully',
             newStudentsCount: insertedStudents.length,
             previousCount: existingCount,
-            totalInDatabase: totalStudents
+            totalInDatabase: totalStudents,
+            importBatchId // Optionally return the batch ID
         });
 
     } catch (error) {

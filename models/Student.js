@@ -27,6 +27,10 @@ const studentSchema = new mongoose.Schema({
       message: 'Education Level must be Grade 1, Grade 2, Grade 3, or Grade 4'
     }
   },
+  importBatchId: {
+    type: String,
+    required: true
+  },
 }, {
   timestamps: true
 });
