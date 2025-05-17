@@ -49,6 +49,34 @@ app.get('/api/health', (req, res) => {
     }
 });
 
+// Database test route
+app.get('/api/test/db', async (req, res) => {
+    try {
+        const dbState = mongoose.connection.readyState;
+        if (dbState !== 1) {
+            // Try to reconnect if not connected
+            await connectDB();
+            // Check state again after reconnection attempt
+            const newState = mongoose.connection.readyState;
+            if (newState !== 1) {
+                throw new Error('Database connection failed');
+            }
+        }
+        res.json({ 
+            status: 'ok',
+            message: 'Database connection successful',
+            state: dbState
+        });
+    } catch (error) {
+        console.error('Database test error:', error);
+        res.status(500).json({ 
+            status: 'error',
+            message: 'Database connection test failed',
+            error: error.message
+        });
+    }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Error:', err);

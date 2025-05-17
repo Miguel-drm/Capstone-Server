@@ -11,8 +11,12 @@ interface Student {
   _id: string;  // MongoDB's _id field
   name: string;
   surname: string;
-  email: string;
   grade: string;
+}
+
+interface StudentGroup {
+  importBatchId: string;
+  students: Student[];
 }
 
 export default function ClassListScreen() {
@@ -22,6 +26,7 @@ export default function ClassListScreen() {
   const [alertModalType, setAlertModalType] = useState<'success' | 'error' | 'info'>('info');
   const [alertModalMessage, setAlertModalMessage] = useState('');
   const [instructionModalVisible, setInstructionModalVisible] = useState(false);
+  const [openBatchId, setOpenBatchId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStudents();
@@ -133,7 +138,7 @@ export default function ClassListScreen() {
       }
 
       setAlertModalType('success');
-      setAlertModalMessage(`Successfully imported ${data.count} students!`);
+      setAlertModalMessage(`Successfully imported ${data.newStudentsCount} students!`);
       setAlertModalVisible(true);
 
       // Refresh the student list
@@ -156,7 +161,6 @@ export default function ClassListScreen() {
     <View style={styles.studentCard}>
       <View style={styles.studentInfo}>
         <Text style={styles.studentName}>{item.name} {item.surname}</Text>
-        <Text style={styles.studentEmail}>{item.email}</Text>
       </View>
       <View style={styles.gradeContainer}>
         <Text style={styles.grade}>{item.grade}</Text>
@@ -171,6 +175,18 @@ export default function ClassListScreen() {
       </View>
     );
   }
+
+  const groups = students.reduce((groups: StudentGroup[], student: Student) => {
+    if (!groups.some(g => g.importBatchId === student.grade)) {
+      groups.push({ importBatchId: student.grade, students: [student] });
+    } else {
+      const group = groups.find(g => g.importBatchId === student.grade);
+      if (group) {
+        group.students.push(student);
+      }
+    }
+    return groups;
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -189,15 +205,13 @@ export default function ClassListScreen() {
           '1. Required Columns:\n' +
           '   - Name\n' +
           '   - Surname\n' +
-          '   - Email\n' +
           '   - Grade\n\n' +
           '2. File Format:\n' +
           '   - .xlsx or .xls files only\n' +
           '   - First row should contain headers\n' +
           '   - No empty rows between data\n\n' +
           '3. Data Format:\n' +
-          '   - Email must be valid format\n' +
-          '   - Grade should be a valid grade value\n' +
+          '   - Grade must be one of: Grade 1, Grade 2, Grade 3, or Grade 4\n' +
           '   - Names should not contain special characters\n\n'
         }
         onClose={() => setInstructionModalVisible(false)}
@@ -228,10 +242,47 @@ export default function ClassListScreen() {
       </View>
 
       <FlatList
-        data={students}
-        renderItem={renderStudentItem}
-        keyExtractor={(item) => item._id}
+        data={groups}
+        keyExtractor={item => item.importBatchId}
         contentContainerStyle={styles.listContainer}
+        renderItem={({ item: group }) => (
+          <View key={group.importBatchId} style={styles.dropdownContainer}>
+            <TouchableOpacity
+              style={styles.dropdownHeader}
+              onPress={() => setOpenBatchId(openBatchId === group.importBatchId ? null : group.importBatchId)}
+            >
+              <Text style={styles.dropdownTitle}>Class: {group.importBatchId}</Text>
+              <Ionicons
+                name={openBatchId === group.importBatchId ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={Colors.light.tint}
+              />
+            </TouchableOpacity>
+            {openBatchId === group.importBatchId && (
+              <View style={styles.dropdownContentScroll}>
+                <FlatList
+                  data={group.students}
+                  keyExtractor={student => student._id}
+                  renderItem={({ item: student }) => (
+                    <View key={student._id} style={styles.studentCard}>
+                      <View style={styles.studentInfo}>
+                        <Text style={styles.studentName}>{student.name} {student.surname}</Text>
+                      </View>
+                      <View style={styles.gradeContainer}>
+                        <Text style={styles.grade}>{student.grade}</Text>
+                      </View>
+                    </View>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptyText}>No students found</Text>
+                    </View>
+                  }
+                />
+              </View>
+            )}
+          </View>
+        )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No students found</Text>
@@ -305,10 +356,6 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     marginBottom: 4,
   },
-  studentEmail: {
-    fontSize: 14,
-    color: Colors.light.tabIconDefault,
-  },
   gradeContainer: {
     backgroundColor: Colors.light.tint,
     borderRadius: 8,
@@ -330,5 +377,27 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: Colors.light.tabIconDefault,
+  },
+  dropdownContainer: {
+    marginBottom: 10,
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: Colors.light.background,
+    borderRadius: 8,
+  },
+  dropdownTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  dropdownContentScroll: {
+    maxHeight: 300, // Adjust as needed
+    overflow: 'scroll',
+    backgroundColor: '#f7fbff',
+    padding: 8,
   },
 }); 

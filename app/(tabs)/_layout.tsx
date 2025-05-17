@@ -52,7 +52,7 @@ export default function TabLayout() {
         }}
       />
       <Stack.Screen
-        name="AdminDashboard"
+        name="adminDashboard"
         options={{
           headerShown: false,
           headerTitle: () => <CustomTitle />,
@@ -69,6 +69,7 @@ export default function TabLayout() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="intro" options={{ headerShown: false }} />
       <Stack.Screen name="(tcd)" options={{ headerShown: false }} />
+      <Stack.Screen name="(adb)" options={{ headerShown: false }} />
     </Stack>
   );
 }
