@@ -82,9 +82,12 @@ async function processExcelData(fileBuffer) {
                     grade: String(row[headers.indexOf('grade')] || '').trim()
                 };
 
-                // Only add email if it exists in the Excel file
+                // Only add email if it exists and is not empty
                 if (headers.includes('email') && row[headers.indexOf('email')]) {
-                    student.email = String(row[headers.indexOf('email')]).trim().toLowerCase();
+                    const email = String(row[headers.indexOf('email')]).trim().toLowerCase();
+                    if (email && isValidEmail(email)) {
+                        student.email = email;
+                    }
                 }
 
                 const validationErrors = validateStudent(student);
@@ -111,7 +114,6 @@ async function processExcelData(fileBuffer) {
 // Function to import students to database
 async function importStudentsToDatabase(students) {
     try {
-        // Remove the deleteMany operation to keep existing students
         console.log('Starting to import new students...');
 
         // Insert new students in batches
@@ -156,9 +158,27 @@ async function importStudentsToDatabase(students) {
                 for (let i = 0; i < batch.length; i++) {
                     try {
                         const student = batch[i];
-                        const newStudent = await Student.create(student);
-                        results.push(newStudent._id);
-                        console.log(`Successfully inserted student: ${student.name} ${student.surname}`);
+                        // Check if student with same name and surname already exists
+                        const existingStudent = await Student.findOne({
+                            name: student.name,
+                            surname: student.surname
+                        });
+
+                        if (existingStudent) {
+                            // Update existing student
+                            const updatedStudent = await Student.findByIdAndUpdate(
+                                existingStudent._id,
+                                { $set: student },
+                                { new: true }
+                            );
+                            results.push(updatedStudent._id);
+                            console.log(`Updated existing student: ${student.name} ${student.surname}`);
+                        } else {
+                            // Insert new student
+                            const newStudent = await Student.create(student);
+                            results.push(newStudent._id);
+                            console.log(`Successfully inserted student: ${student.name} ${student.surname}`);
+                        }
                     } catch (singleError) {
                         errors.push({
                             row: batchIndex * batchSize + i + 1,

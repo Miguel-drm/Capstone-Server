@@ -15,7 +15,8 @@ const studentSchema = new mongoose.Schema({
     type: String,
     trim: true,
     lowercase: true,
-    sparse: true
+    sparse: true,
+    default: null
   },
   grade: {
     type: String,
@@ -26,8 +27,23 @@ const studentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-studentSchema.index({ email: 1 }, { unique: false });
+// Drop existing indexes
+studentSchema.indexes().forEach(index => {
+  studentSchema.index(index[0], { ...index[1], unique: false });
+});
+
+// Create new index for email that allows null values
+studentSchema.index({ email: 1 }, { 
+  unique: true, 
+  sparse: true,
+  partialFilterExpression: { email: { $type: "string" } }
+});
 
 const Student = mongoose.model('Student', studentSchema);
+
+// Drop existing indexes from the collection
+Student.collection.dropIndexes().catch(err => {
+  console.log('No indexes to drop or error dropping indexes:', err);
+});
 
 module.exports = Student; 
