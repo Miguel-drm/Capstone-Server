@@ -103,8 +103,9 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     const students = data.map(row => ({
       name: row.Name || row.name,
       surname: row.Surname || row.surname,
-      email: row.Email || row.email,
-      grade: row.Grade || row.grade
+      grade: row.Grade || row.grade,
+      // Only include email if it exists
+      ...(row.Email || row.email ? { email: row.Email || row.email } : {})
     }));
 
     console.log('Processed students:', students.length);
@@ -124,7 +125,11 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     }
 
     // Insert students into database
-    const result = await Student.insertMany(students, { ordered: false });
+    const result = await Student.insertMany(students, { 
+      ordered: false,
+      // Don't throw error on duplicate emails
+      writeConcern: { w: 0 }
+    });
     console.log('Successfully inserted students:', result.length);
 
     res.status(200).json({
@@ -136,13 +141,6 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
   } catch (error) {
     console.error('Error processing Excel file:', error);
     
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: 'Duplicate email found in the Excel file'
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Error processing Excel file',
