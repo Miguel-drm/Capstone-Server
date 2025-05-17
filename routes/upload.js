@@ -81,7 +81,7 @@ async function processExcelData(fileBuffer) {
                 const student = {
                     name: String(row[headers.indexOf('name')] || '').trim(),
                     surname: String(row[headers.indexOf('surname')] || '').trim(),
-                    educationLevel: String(row[headers.indexOf('grade')] || '').trim()
+                    grade: String(row[headers.indexOf('grade')] || '').trim()
                 };
 
                 // Only add email if it exists and is not empty
