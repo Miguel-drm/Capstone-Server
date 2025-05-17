@@ -2,6 +2,8 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import { Text, StyleSheet } from 'react-native';
 import Colors from '@/constants/Colors';
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 const CustomTitle = () => (
   <Text style={styles.headerTitle}>Phil E-Read</Text>
@@ -63,8 +65,10 @@ export default function TabLayout() {
           headerTitle: () => <CustomTitle />,
         }}
       />
+      
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="intro" options={{ headerShown: false }} />
+      <Stack.Screen name="(tcd)" options={{ headerShown: false }} />
     </Stack>
   );
 }

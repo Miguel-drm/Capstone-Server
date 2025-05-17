@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const connectDB = require('./connect.cjs');
 const authRoutes = require('./routes/auth');
+const uploadRouter = require('./routes/upload');
 
 // Load environment variables from config.env
 dotenv.config({ path: path.join(__dirname, 'config.env') });
@@ -18,25 +19,17 @@ const app = express();
 app.use(cors({
     origin: '*', // Allow all origins during development
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     credentials: true
 }));
 
 // Middleware
 app.use(express.json());
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({
-        success: false,
-        message: 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-    });
-});
+app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/upload', uploadRouter);
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -56,14 +49,14 @@ app.get('/api/health', (req, res) => {
     }
 });
 
-// Database test endpoint
-app.get('/api/test/db', async (req, res) => {
-    try {
-        const userCount = await require('./models/User').countDocuments();
-        res.json({ success: true, userCount });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'Something went wrong!',
+        error: process.env.NODE_ENV === 'development' ? err.stack : 'Internal server error'
+    });
 });
 
 // Start server

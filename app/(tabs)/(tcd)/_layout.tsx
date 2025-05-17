@@ -1,9 +1,10 @@
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ScrollView, Animated } from 'react-native'
-import React, { useState, useEffect, useRef } from 'react'
-import { Ionicons } from '@expo/vector-icons'
-import { useRouter, usePathname } from 'expo-router'
-import Colors from '@/constants/Colors'
-import { api, auth } from '../utils/api'
+import { router, usePathname } from 'expo-router';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
+import { Text, TouchableOpacity, View, Animated, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
+import Colors from '../../../constants/Colors';
+import React, { useState, useEffect, useRef } from 'react';
+import { api, auth } from '../../utils/api';
+import { Slot } from 'expo-router';
 
 type MenuItem = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -11,58 +12,59 @@ type MenuItem = {
   route: string;
 }
 
-const TeacherDashboard = () => {
-  const [isSidebarOpen, setSidebarOpen] = useState(false)
-  const [userName, setUserName] = useState('')
-  const router = useRouter()
-  const pathname = usePathname()
-  const slideAnim = useRef(new Animated.Value(-250)).current
+export default function TcdLayout() {
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [userName, setUserName] = useState('');
+  const slideAnim = useRef(new Animated.Value(-250)).current;
+  const pathname = usePathname();
 
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: isSidebarOpen ? 0 : -250,
       duration: 300,
       useNativeDriver: true,
-    }).start()
-  }, [isSidebarOpen])
+    }).start();
+  }, [isSidebarOpen]);
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const userData = await auth.getUser()
+        const userData = await auth.getUser();
         if (userData && userData.name) {
-          setUserName(userData.name)
+          setUserName(userData.name);
         }
       } catch (error) {
-        console.error('Error fetching user data:', error)
+        console.error('Error fetching user data:', error);
       }
-    }
-    fetchUserData()
-  }, [])
+    };
+    fetchUserData();
+  }, []);
 
   const menuItems: MenuItem[] = [
     { icon: 'home-outline', label: 'Dashboard', route: '/(tabs)/teacherDashboard' },
     { icon: 'book-outline', label: 'Reading', route: '/(tabs)/(tcd)/reading' },
     { icon: 'chatbubble-outline', label: 'Chat', route: '/(tabs)/(tcd)/chat' },
     { icon: 'list-outline', label: 'Class List', route: '/(tabs)/(tcd)/classlist' },
-    { icon: 'book-outline', label: 'Insert Story', route: '/(tabs)/(tcd)/reading' },
-    { icon: 'create-outline', label: 'Make a Test', route: '/(tabs)/(tcd)/chat' },
-    { icon: 'people-outline', label: 'Consultation', route: '/consultation' },
-    { icon: 'download-outline', label: 'Export Data', route: '/exportData' },
-  ]
+    { icon: 'book-outline', label: 'Insert Story', route: '/(tabs)/(tcd)/insertStory' },
+    { icon: 'create-outline', label: 'Make a Test', route: '/(tabs)/(tcd)/makeTest' },
+    { icon: 'people-outline', label: 'Consultation', route: '/(tabs)/(tcd)/consultation' },
+    { icon: 'download-outline', label: 'Export Data', route: '/(tabs)/(tcd)/exportData' },
+  ];
 
   const toggleSidebar = () => {
-    setSidebarOpen(!isSidebarOpen)
-  }
+    setSidebarOpen(!isSidebarOpen);
+  };
 
   const handleLogout = async () => {
     try {
-      await api.auth.logout()
-      router.replace('/login')
+      await api.auth.logout();
+      router.replace('/login');
     } catch (error) {
-      console.error('Logout error:', error)
+      console.error('Logout error:', error);
     }
-  }
+  };
+
+  const isDashboard = pathname === '/(tabs)/teacherDashboard';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -78,14 +80,14 @@ const TeacherDashboard = () => {
         </View>
         <ScrollView style={styles.menuContainer}>
           {menuItems.map((item, index) => {
-            const isActive = pathname === item.route
+            const isActive = pathname === item.route;
             return (
               <TouchableOpacity
                 key={index}
                 style={[styles.menuItem, isActive && styles.activeMenuItem]}
                 onPress={() => {
-                  router.push(item.route)
-                  setSidebarOpen(false)
+                  router.push(item.route);
+                  setSidebarOpen(false);
                 }}
               >
                 <Ionicons 
@@ -97,7 +99,7 @@ const TeacherDashboard = () => {
                   {item.label}
                 </Text>
               </TouchableOpacity>
-            )
+            );
           })}
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={24} color="#fff" />
@@ -112,39 +114,43 @@ const TeacherDashboard = () => {
           <TouchableOpacity onPress={toggleSidebar} style={styles.menuButton}>
             <Ionicons name="menu" size={24} color="#333" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Teacher Dashboard</Text>
+          <Text style={styles.headerTitle}>Teacher Portal</Text>
         </View>
-        <ScrollView style={styles.content}>
-          <Text style={styles.welcomeText}>Welcome, {userName || 'Teacher'}</Text>
-          
-          {/* Shortcuts Grid */}
-          <View style={styles.shortcutsContainer}>
-            <Text style={styles.sectionTitle}>Quick Access</Text>
-            <View style={styles.shortcutsGrid}>
-              {menuItems.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.shortcutCard}
-                  onPress={() => {
-                    router.push(item.route);
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <View style={styles.shortcutIconContainer}>
-                    <Ionicons name={item.icon} size={32} color="#4A90E2" />
-                  </View>
-                  <Text style={styles.shortcutLabel}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
+        {isDashboard ? (
+          <ScrollView style={styles.content}>
+            <Text style={styles.welcomeText}>Welcome, {userName || 'Teacher'}</Text>
+            
+            {/* Shortcuts Grid */}
+            <View style={styles.shortcutsContainer}>
+              <Text style={styles.sectionTitle}>Quick Access</Text>
+              <View style={styles.shortcutsGrid}>
+                {menuItems.map((item, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.shortcutCard}
+                    onPress={() => {
+                      router.push(item.route);
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <View style={styles.shortcutIconContainer}>
+                      <Ionicons name={item.icon} size={32} color="#4A90E2" />
+                    </View>
+                    <Text style={styles.shortcutLabel}>{item.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
+          </ScrollView>
+        ) : (
+          <View style={styles.content}>
+            <Slot />
           </View>
-        </ScrollView>
+        )}
       </View>
     </SafeAreaView>
-  )
+  );
 }
-
-export default TeacherDashboard
 
 const styles = StyleSheet.create({
   container: {
@@ -293,19 +299,4 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
   },
-  dashboardButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 8,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  dashboardButtonText: {
-    color: '#fff',
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-})
- 
+}); 
