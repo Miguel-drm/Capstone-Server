@@ -14,17 +14,20 @@ const studentSchema = new mongoose.Schema({
   email: {
     type: String,
     trim: true,
-    lowercase: true
+    lowercase: true,
+    sparse: true
   },
   grade: {
     type: String,
     required: [true, 'Grade is required'],
     trim: true
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
+}, {
+  timestamps: true
 });
 
-module.exports = mongoose.model('Student', studentSchema); 
+studentSchema.index({ email: 1 }, { unique: false });
+
+const Student = mongoose.model('Student', studentSchema);
+
+module.exports = Student; 

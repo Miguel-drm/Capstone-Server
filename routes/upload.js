@@ -33,7 +33,17 @@ function validateStudent(student) {
     if (!student.grade || typeof student.grade !== 'string' || student.grade.trim().length === 0) {
         errors.push('Grade is required');
     }
+    // Email is optional, but if provided, validate format
+    if (student.email && !isValidEmail(student.email)) {
+        errors.push('Invalid email format');
+    }
     return errors;
+}
+
+// Helper function to validate email format
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
 }
 
 // Function to process Excel data
@@ -71,6 +81,11 @@ async function processExcelData(fileBuffer) {
                     surname: String(row[headers.indexOf('surname')] || '').trim(),
                     grade: String(row[headers.indexOf('grade')] || '').trim()
                 };
+
+                // Only add email if it exists in the Excel file
+                if (headers.includes('email') && row[headers.indexOf('email')]) {
+                    student.email = String(row[headers.indexOf('email')]).trim().toLowerCase();
+                }
 
                 const validationErrors = validateStudent(student);
                 if (validationErrors.length > 0) {
