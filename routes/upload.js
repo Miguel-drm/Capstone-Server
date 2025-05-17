@@ -12,11 +12,22 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        file.mimetype === 'application/vnd.ms-excel') {
+    // Accept all Excel file types
+    const allowedMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+      'application/excel',
+      'application/x-excel',
+      'application/x-msexcel'
+    ];
+
+    console.log('Received file type:', file.mimetype);
+    
+    if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only Excel files are allowed!'), false);
+      console.log('Invalid file type:', file.mimetype);
+      cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
     }
   }
 });
@@ -49,7 +60,7 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
       console.log('No file received');
       return res.status(400).json({ 
         success: false, 
-        message: 'Please upload an Excel file' 
+        message: 'Please upload an Excel file (.xlsx or .xls)' 
       });
     }
 
