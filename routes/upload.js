@@ -91,6 +91,7 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     const data = xlsx.utils.sheet_to_json(worksheet);
 
     console.log('Excel data rows:', data.length);
+    console.log('First row of data:', data[0]);
 
     if (data.length === 0) {
       return res.status(400).json({
@@ -100,15 +101,24 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     }
 
     // Process and validate the data
-    const students = data.map(row => ({
-      name: row.Name || row.name,
-      surname: row.Surname || row.surname,
-      grade: row.Grade || row.grade,
-      // Only include email if it exists
-      ...(row.Email || row.email ? { email: row.Email || row.email } : {})
-    }));
+    const students = data.map(row => {
+      // Log each row being processed
+      console.log('Processing row:', row);
+      
+      const student = {
+        name: row.Name || row.name || row['Student Name'] || row['StudentName'],
+        surname: row.Surname || row.surname || row['Last Name'] || row['LastName'],
+        grade: row.Grade || row.grade || row['Student Grade'] || row['StudentGrade'],
+        // Only include email if it exists
+        ...(row.Email || row.email || row['Student Email'] || row['StudentEmail'] ? 
+          { email: row.Email || row.email || row['Student Email'] || row['StudentEmail'] } : {})
+      };
 
-    console.log('Processed students:', students.length);
+      console.log('Processed student:', student);
+      return student;
+    });
+
+    console.log('Total processed students:', students.length);
 
     // Validate required fields
     const invalidStudents = students.filter(student => 
@@ -125,6 +135,7 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     }
 
     // Insert students into database
+    console.log('Attempting to insert students:', students.length);
     const result = await Student.insertMany(students, { 
       ordered: false,
       // Don't throw error on duplicate emails
@@ -144,6 +155,24 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     res.status(500).json({
       success: false,
       message: 'Error processing Excel file',
+      error: error.message
+    });
+  }
+});
+
+// Route for getting all students
+router.get('/students', async (req, res) => {
+  try {
+    const students = await Student.find({}).sort({ name: 1, surname: 1 });
+    res.status(200).json({
+      success: true,
+      students: students
+    });
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching students',
       error: error.message
     });
   }
