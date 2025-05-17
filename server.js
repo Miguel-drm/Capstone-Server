@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const connectDB = require('./connect.cjs');
 const authRoutes = require('./routes/auth');
+const uploadRouter = require('./routes/upload');
 
 // Load environment variables from config.env
 dotenv.config({ path: path.join(__dirname, 'config.env') });
@@ -37,6 +38,7 @@ app.use((err, req, res, next) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/upload', uploadRouter);
 
 // Health check route
 app.get('/api/health', (req, res) => {
