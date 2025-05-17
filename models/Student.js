@@ -18,7 +18,7 @@ const studentSchema = new mongoose.Schema({
     sparse: true,
     default: null
   },
-  educationLevel: {
+  grade: {
     type: String,
     required: [true, 'Education Level is required'],
     trim: true,

@@ -30,9 +30,9 @@ function validateStudent(student) {
     if (!student.surname || typeof student.surname !== 'string' || student.surname.trim().length === 0) {
         errors.push('Surname is required');
     }
-    if (!student.educationLevel || typeof student.educationLevel !== 'string' || student.educationLevel.trim().length === 0) {
+    if (!student.grade || typeof student.grade !== 'string' || student.grade.trim().length === 0) {
         errors.push('Education Level is required');
-    } else if (!['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'].includes(student.educationLevel)) {
+    } else if (!['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'].includes(student.grade)) {
         errors.push('Education Level must be Grade 1, Grade 2, Grade 3, or Grade 4');
     }
     // Email is optional, but if provided, validate format
@@ -65,7 +65,7 @@ async function processExcelData(fileBuffer) {
 
         // Get headers and validate
         const headers = data[0].map(h => h.toLowerCase());
-        const requiredHeaders = ['name', 'surname', 'educationlevel'];
+        const requiredHeaders = ['name', 'surname', 'grade'];
         const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
         
         if (missingHeaders.length > 0) {
@@ -81,7 +81,7 @@ async function processExcelData(fileBuffer) {
                 const student = {
                     name: String(row[headers.indexOf('name')] || '').trim(),
                     surname: String(row[headers.indexOf('surname')] || '').trim(),
-                    educationLevel: String(row[headers.indexOf('educationlevel')] || '').trim()
+                    educationLevel: String(row[headers.indexOf('grade')] || '').trim()
                 };
 
                 // Only add email if it exists and is not empty
