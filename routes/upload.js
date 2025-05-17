@@ -84,7 +84,7 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 
     console.log('Processing file:', req.file.originalname);
 
-    // Read the Excel file with header row
+    // Read the Excel file
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
@@ -101,20 +101,11 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
     const students = data.slice(1).map((row, index) => {
       console.log(`Processing row ${index + 1}:`, row);
       
-      // Create student object based on header positions
       const student = {
-        name: row[headers.indexOf('Name')] || row[headers.indexOf('name')] || row[headers.indexOf('Student Name')] || '',
-        surname: row[headers.indexOf('Surname')] || row[headers.indexOf('surname')] || row[headers.indexOf('Last Name')] || '',
-        grade: row[headers.indexOf('Grade')] || row[headers.indexOf('grade')] || row[headers.indexOf('Student Grade')] || '',
+        name: row[0] || '', // First column is name
+        surname: row[1] || '', // Second column is surname
+        grade: row[2] || '', // Third column is grade
       };
-
-      // Only add email if the column exists and has a value
-      const emailIndex = headers.findIndex(h => 
-        ['Email', 'email', 'Student Email'].includes(h)
-      );
-      if (emailIndex !== -1 && row[emailIndex]) {
-        student.email = row[emailIndex];
-      }
 
       console.log(`Processed student ${index + 1}:`, student);
       return student;
@@ -136,13 +127,18 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
       });
     }
 
+    // Clear existing students before inserting new ones
+    await Student.deleteMany({});
+    console.log('Cleared existing students');
+
     // Insert students into database
     console.log('Attempting to insert students:', students.length);
-    const result = await Student.insertMany(students, { 
-      ordered: false,
-      writeConcern: { w: 0 }
-    });
+    const result = await Student.insertMany(students);
     console.log('Successfully inserted students:', result.length);
+
+    // Fetch all students to verify
+    const allStudents = await Student.find({});
+    console.log('Verification - Total students in database:', allStudents.length);
 
     res.status(200).json({
       success: true,
@@ -165,7 +161,8 @@ router.get('/students', async (req, res) => {
   console.log('Received request to fetch students');
   try {
     const students = await Student.find({}).sort({ name: 1, surname: 1 });
-    console.log(`Found ${students.length} students`);
+    console.log(`Found ${students.length} students in database`);
+    console.log('First student sample:', students[0]);
     
     res.status(200).json({
       success: true,
