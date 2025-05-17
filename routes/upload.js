@@ -12,59 +12,32 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024 // 5MB limit
     },
     fileFilter: (req, file, cb) => {
-        console.log('Received file in multer:', {
-            originalname: file.originalname,
-            mimetype: file.mimetype,
-            fieldname: file.fieldname
-        });
-
         // Check file extension
         const ext = file.originalname.split('.').pop().toLowerCase();
         if (ext === 'xlsx' || ext === 'xls') {
             return cb(null, true);
         }
-
-        // If extension check fails, check mimetype
-        const allowedMimeTypes = [
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-excel',
-            'application/excel',
-            'application/x-excel',
-            'application/x-msexcel'
-        ];
-
-        if (allowedMimeTypes.includes(file.mimetype)) {
-            return cb(null, true);
-        }
-
-        console.log('File rejected:', {
-            name: file.originalname,
-            type: file.mimetype
-        });
-
         cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
     }
 });
 
-// Error handling middleware for multer
-const handleMulterError = (err, req, res, next) => {
-    if (err instanceof multer.MulterError) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({
-                success: false,
-                message: 'File size too large. Maximum size is 5MB'
-            });
-        }
-        return res.status(400).json({
-            success: false,
-            message: err.message
-        });
+// Function to validate student data
+function validateStudent(student) {
+    const errors = [];
+    if (!student.name || typeof student.name !== 'string' || student.name.trim().length === 0) {
+        errors.push('Name is required');
     }
-    next(err);
-};
+    if (!student.surname || typeof student.surname !== 'string' || student.surname.trim().length === 0) {
+        errors.push('Surname is required');
+    }
+    if (!student.grade || typeof student.grade !== 'string' || student.grade.trim().length === 0) {
+        errors.push('Grade is required');
+    }
+    return errors;
+}
 
-// Function to import Excel data to MongoDB
-async function importExcelData2MongoDB(fileBuffer) {
+// Function to process Excel data
+async function processExcelData(fileBuffer) {
     try {
         // Read the Excel file
         const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
@@ -73,65 +46,85 @@ async function importExcelData2MongoDB(fileBuffer) {
         
         // Convert to JSON with header row
         const data = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
-        console.log('Raw Excel data:', data);
-
-        // Get headers from first row
-        const headers = data[0];
-        console.log('Excel headers:', headers);
-
+        
         if (data.length <= 1) {
             throw new Error('Excel file is empty or contains only headers');
         }
 
-        // Process remaining rows
-        const students = data.slice(1).map((row, index) => {
-            console.log(`Processing row ${index + 1}:`, row);
-            
-            // Create student object using array indices
-            const student = {
-                name: String(row[0] || '').trim(),
-                surname: String(row[1] || '').trim(),
-                grade: String(row[2] || '').trim()
-            };
-
-            console.log(`Processed student ${index + 1}:`, student);
-            return student;
-        });
-
-        console.log('Total processed students:', students.length);
-
-        // Validate required fields
-        const invalidStudents = students.filter(student => 
-            !student.name || !student.surname || !student.grade
-        );
-
-        if (invalidStudents.length > 0) {
-            console.log('Invalid students found:', invalidStudents);
-            throw new Error(`Found ${invalidStudents.length} invalid records. All fields are required.`);
+        // Get headers and validate
+        const headers = data[0].map(h => h.toLowerCase());
+        const requiredHeaders = ['name', 'surname', 'grade'];
+        const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+        
+        if (missingHeaders.length > 0) {
+            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
         }
 
+        // Process rows
+        const students = [];
+        const errors = [];
+        
+        data.slice(1).forEach((row, index) => {
+            try {
+                const student = {
+                    name: String(row[headers.indexOf('name')] || '').trim(),
+                    surname: String(row[headers.indexOf('surname')] || '').trim(),
+                    grade: String(row[headers.indexOf('grade')] || '').trim()
+                };
+
+                const validationErrors = validateStudent(student);
+                if (validationErrors.length > 0) {
+                    errors.push(`Row ${index + 2}: ${validationErrors.join(', ')}`);
+                } else {
+                    students.push(student);
+                }
+            } catch (err) {
+                errors.push(`Row ${index + 2}: Invalid data format`);
+            }
+        });
+
+        if (errors.length > 0) {
+            throw new Error(`Validation errors found:\n${errors.join('\n')}`);
+        }
+
+        return students;
+    } catch (error) {
+        throw new Error(`Error processing Excel file: ${error.message}`);
+    }
+}
+
+// Function to import students to database
+async function importStudentsToDatabase(students) {
+    try {
         // Clear existing students
         await Student.deleteMany({});
         console.log('Cleared existing students');
 
-        // Insert students one by one to ensure all are added
-        const insertedStudents = [];
-        for (const student of students) {
-            try {
-                const newStudent = await Student.create(student);
-                insertedStudents.push(newStudent);
-                console.log('Successfully inserted student:', newStudent.name, newStudent.surname);
-            } catch (err) {
-                console.error('Error inserting student:', student, err);
-            }
+        // Insert new students in batches
+        const batchSize = 100;
+        const batches = [];
+        
+        for (let i = 0; i < students.length; i += batchSize) {
+            batches.push(students.slice(i, i + batchSize));
         }
 
-        console.log('Total inserted students:', insertedStudents.length);
-        return insertedStudents;
+        const results = [];
+        for (const batch of batches) {
+            const batchResult = await Student.insertMany(batch, { ordered: false });
+            results.push(...batchResult);
+            console.log(`Inserted batch of ${batch.length} students`);
+        }
 
+        return results;
     } catch (error) {
-        console.error('Error in importExcelData2MongoDB:', error);
-        throw error;
+        if (error.writeErrors) {
+            const errors = error.writeErrors.map(err => ({
+                row: err.index,
+                error: err.errmsg
+            }));
+            throw new Error(`Database insertion errors: ${JSON.stringify(errors)}`);
+        }
+        throw new Error(`Database error: ${error.message}`);
     }
 }
 
@@ -146,24 +139,31 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         }
 
         console.log('Processing file:', req.file.originalname);
-        const result = await importExcelData2MongoDB(req.file.buffer);
+        
+        // Process Excel data
+        const students = await processExcelData(req.file.buffer);
+        console.log(`Processed ${students.length} valid students`);
+
+        // Import to database
+        const insertedStudents = await importStudentsToDatabase(students);
+        console.log(`Successfully inserted ${insertedStudents.length} students`);
 
         // Verify the insertion
-        const allStudents = await Student.find({});
-        console.log('Verification - Total students in database:', allStudents.length);
+        const totalStudents = await Student.countDocuments();
+        console.log('Total students in database:', totalStudents);
 
         res.status(200).json({
             success: true,
             message: 'Students imported successfully',
-            count: result.length,
-            totalInDatabase: allStudents.length
+            count: insertedStudents.length,
+            totalInDatabase: totalStudents
         });
 
     } catch (error) {
-        console.error('Error processing Excel file:', error);
+        console.error('Error processing upload:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Error processing Excel file'
+            message: error.message
         });
     }
 });
@@ -171,10 +171,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 // Route for getting all students
 router.get('/students', async (req, res) => {
     try {
-        const students = await Student.find({}).sort({ name: 1, surname: 1 });
-        console.log(`Found ${students.length} students in database`);
+        const students = await Student.find({})
+            .sort({ name: 1, surname: 1 })
+            .select('name surname grade');
+            
         res.status(200).json({
             success: true,
+            count: students.length,
             students: students
         });
     } catch (error) {
