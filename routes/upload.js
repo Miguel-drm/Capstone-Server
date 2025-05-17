@@ -111,12 +111,11 @@ async function processExcelData(fileBuffer) {
 // Function to import students to database
 async function importStudentsToDatabase(students) {
     try {
-        // Clear existing students
-        await Student.deleteMany({});
-        console.log('Cleared existing students');
+        // Remove the deleteMany operation to keep existing students
+        console.log('Starting to import new students...');
 
         // Insert new students in batches
-        const batchSize = 50; // Reduced batch size for better error handling
+        const batchSize = 50;
         const batches = [];
         
         for (let i = 0; i < students.length; i += batchSize) {
@@ -202,18 +201,23 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const students = await processExcelData(req.file.buffer);
         console.log(`Processed ${students.length} valid students`);
 
+        // Get count of existing students
+        const existingCount = await Student.countDocuments();
+        console.log('Existing students in database:', existingCount);
+
         // Import to database
         const insertedStudents = await importStudentsToDatabase(students);
-        console.log(`Successfully inserted ${insertedStudents.length} students`);
+        console.log(`Successfully inserted ${insertedStudents.length} new students`);
 
-        // Verify the insertion
+        // Get total count after insertion
         const totalStudents = await Student.countDocuments();
         console.log('Total students in database:', totalStudents);
 
         res.status(200).json({
             success: true,
             message: 'Students imported successfully',
-            count: insertedStudents.length,
+            newStudentsCount: insertedStudents.length,
+            previousCount: existingCount,
             totalInDatabase: totalStudents
         });
 
