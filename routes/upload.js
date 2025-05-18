@@ -26,16 +26,30 @@ const upload = multer({
 // Configure multer for story uploads
 const storyStorage = multer.diskStorage({
     destination: function (req, file, cb) {
+        // Create directories if they don't exist
+        const fs = require('fs');
+        const path = require('path');
+        
         // Determine if it's a story file or image
         const isImage = file.mimetype.startsWith('image/');
         const uploadPath = isImage ? 'uploads/stories/images' : 'uploads/stories/files';
-        cb(null, uploadPath);
+        
+        // Create directory if it doesn't exist
+        const fullPath = path.join(__dirname, '..', uploadPath);
+        if (!fs.existsSync(fullPath)) {
+            fs.mkdirSync(fullPath, { recursive: true });
+        }
+        
+        console.log('Uploading to path:', fullPath);
+        cb(null, fullPath);
     },
     filename: function (req, file, cb) {
         // Generate unique filename
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         const ext = file.originalname.split('.').pop();
-        cb(null, file.fieldname + '-' + uniqueSuffix + '.' + ext);
+        const filename = file.fieldname + '-' + uniqueSuffix + '.' + ext;
+        console.log('Generated filename:', filename);
+        cb(null, filename);
     }
 });
 
@@ -45,6 +59,8 @@ const storyUpload = multer({
         fileSize: 10 * 1024 * 1024 // 10MB limit for stories
     },
     fileFilter: (req, file, cb) => {
+        console.log('Processing file:', file.originalname, 'Mimetype:', file.mimetype);
+        
         // Allow PDF, DOC, DOCX for story files
         if (file.fieldname === 'storyFile') {
             const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -383,6 +399,11 @@ const validateStoryData = (storyData) => {
 // Function to process story upload
 const processStoryUpload = async (files, body, userId) => {
     try {
+        console.log('Processing story upload...');
+        console.log('Files received:', files);
+        console.log('Body received:', body);
+        console.log('User ID:', userId);
+
         // Validate required files
         if (!files.storyFile || !files.storyImage) {
             throw new Error('Both story file and image are required');
@@ -390,6 +411,20 @@ const processStoryUpload = async (files, body, userId) => {
 
         const storyFile = files.storyFile[0];
         const storyImage = files.storyImage[0];
+
+        console.log('Story file details:', {
+            originalname: storyFile.originalname,
+            mimetype: storyFile.mimetype,
+            size: storyFile.size,
+            path: storyFile.path
+        });
+
+        console.log('Story image details:', {
+            originalname: storyImage.originalname,
+            mimetype: storyImage.mimetype,
+            size: storyImage.size,
+            path: storyImage.path
+        });
 
         // Create story data object
         const storyData = {
@@ -410,6 +445,8 @@ const processStoryUpload = async (files, body, userId) => {
             status: 'pending'
         };
 
+        console.log('Story data to be saved:', storyData);
+
         // Validate story data
         const validationErrors = validateStoryData(storyData);
         if (validationErrors.length > 0) {
@@ -419,9 +456,11 @@ const processStoryUpload = async (files, body, userId) => {
         // Create new story
         const story = new Story(storyData);
         await story.save();
+        console.log('Story saved successfully:', story._id);
 
         return story;
     } catch (error) {
+        console.error('Error in processStoryUpload:', error);
         throw new Error(`Error processing story upload: ${error.message}`);
     }
 };
@@ -432,6 +471,11 @@ router.post('/story', storyUpload.fields([
     { name: 'storyImage', maxCount: 1 }
 ]), async (req, res) => {
     try {
+        console.log('Received story upload request');
+        console.log('Request body:', req.body);
+        console.log('Request files:', req.files);
+        console.log('Request user:', req.user);
+
         if (!req.files) {
             return res.status(400).json({ message: 'No files uploaded' });
         }
