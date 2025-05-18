@@ -486,6 +486,9 @@ const processStoryUpload = async (files, body, userId) => {
 // Story upload route
 router.post('/story', storyUpload, async (req, res) => {
     try {
+        console.log('==== STORY UPLOAD DEBUG ====');
+        console.log('req.files:', req.files);
+        console.log('req.body:', req.body);
         console.log('Received story upload request');
         console.log('Request body:', req.body);
         console.log('Request files:', req.files);
