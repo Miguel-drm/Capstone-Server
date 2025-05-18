@@ -61,8 +61,8 @@ const storyStorage = multer.diskStorage({
     filename: function (req, file, cb) {
         // Generate unique filename
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = file.originalname.split('.').pop();
-        const filename = file.fieldname + '-' + uniqueSuffix + '.' + ext;
+        const ext = path.extname(file.originalname);
+        const filename = file.fieldname + '-' + uniqueSuffix + ext;
         console.log('Generated filename:', filename);
         cb(null, filename);
     }
@@ -93,7 +93,10 @@ const storyUpload = multer({
         }
         cb(new Error('Invalid field name'), false);
     }
-});
+}).fields([
+    { name: 'storyFile', maxCount: 1 },
+    { name: 'storyImage', maxCount: 1 }
+]);
 
 // Function to validate student data
 function validateStudent(student) {
@@ -481,10 +484,7 @@ const processStoryUpload = async (files, body, userId) => {
 };
 
 // Story upload route
-router.post('/story', storyUpload.fields([
-    { name: 'storyFile', maxCount: 1 },
-    { name: 'storyImage', maxCount: 1 }
-]), async (req, res) => {
+router.post('/story', storyUpload, async (req, res) => {
     try {
         console.log('Received story upload request');
         console.log('Request body:', req.body);
