@@ -5,6 +5,29 @@ const xlsx = require('xlsx');
 const Student = require('../models/Student');
 const Story = require('../models/Stories');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
+
+// Create upload directories if they don't exist
+const createUploadDirectories = () => {
+    const baseDir = path.join(__dirname, '..');
+    const dirs = [
+        path.join(baseDir, 'uploads'),
+        path.join(baseDir, 'uploads', 'stories'),
+        path.join(baseDir, 'uploads', 'stories', 'files'),
+        path.join(baseDir, 'uploads', 'stories', 'images')
+    ];
+
+    dirs.forEach(dir => {
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+            console.log(`Created directory: ${dir}`);
+        }
+    });
+};
+
+// Create directories on startup
+createUploadDirectories();
 
 // Configure multer for file upload
 const storage = multer.memoryStorage();
@@ -26,22 +49,14 @@ const upload = multer({
 // Configure multer for story uploads
 const storyStorage = multer.diskStorage({
     destination: function (req, file, cb) {
-        // Create directories if they don't exist
-        const fs = require('fs');
-        const path = require('path');
-        
         // Determine if it's a story file or image
         const isImage = file.mimetype.startsWith('image/');
-        const uploadPath = isImage ? 'uploads/stories/images' : 'uploads/stories/files';
+        const uploadPath = isImage 
+            ? path.join(__dirname, '..', 'uploads', 'stories', 'images')
+            : path.join(__dirname, '..', 'uploads', 'stories', 'files');
         
-        // Create directory if it doesn't exist
-        const fullPath = path.join(__dirname, '..', uploadPath);
-        if (!fs.existsSync(fullPath)) {
-            fs.mkdirSync(fullPath, { recursive: true });
-        }
-        
-        console.log('Uploading to path:', fullPath);
-        cb(null, fullPath);
+        console.log('Upload path:', uploadPath);
+        cb(null, uploadPath);
     },
     filename: function (req, file, cb) {
         // Generate unique filename
@@ -426,18 +441,18 @@ const processStoryUpload = async (files, body, userId) => {
             path: storyImage.path
         });
 
-        // Create story data object
+        // Create story data object with relative paths
         const storyData = {
             title: body.title,
             language: body.language,
             storyFile: {
                 fileName: storyFile.originalname,
-                fileUrl: storyFile.path,
+                fileUrl: path.relative(path.join(__dirname, '..'), storyFile.path),
                 fileType: storyFile.mimetype,
                 fileSize: storyFile.size
             },
             storyImage: {
-                imageUrl: storyImage.path,
+                imageUrl: path.relative(path.join(__dirname, '..'), storyImage.path),
                 imageType: storyImage.mimetype,
                 imageSize: storyImage.size
             },
