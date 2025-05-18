@@ -19,6 +19,10 @@ export default function AddStories() {
   const [storyImage, setStoryImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [stories, setStories] = useState<any[]>([]);
   const [loadingStories, setLoadingStories] = useState(true);
+  const [selectedStory, setSelectedStory] = useState<any>(null);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [imageLoadErrors, setImageLoadErrors] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     fetchStories();
@@ -29,6 +33,11 @@ export default function AddStories() {
       setLoadingStories(true);
       const response = await fetch(`${API_URL}/stories`);
       const data = await response.json();
+      console.log('Fetched Stories Data:', {
+        totalStories: data.stories?.length || 0,
+        storiesWithImages: data.stories?.filter((s: any) => s.storyImage?.imageUrl)?.length || 0,
+        sampleImagePath: data.stories?.[0]?.storyImage?.imageUrl
+      });
       if (data && data.stories) {
         setStories(data.stories);
       } else {
@@ -179,6 +188,110 @@ export default function AddStories() {
     }
   };
 
+  const handleDeleteStory = async () => {
+    try {
+      setIsDeleting(true);
+      const response = await fetch(`${API_URL}/stories/${selectedStory._id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete story');
+      }
+
+      showModal('success', 'Story deleted successfully');
+      setDetailsModalVisible(false);
+      fetchStories(); // Refresh the stories list
+    } catch (error: any) {
+      showModal('error', error.message || 'Failed to delete story');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Story',
+      'Are you sure you want to delete this story?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: handleDeleteStory,
+        },
+      ],
+    );
+  };
+
+  const getImageUrl = (imagePath: string | undefined) => {
+    if (!imagePath) {
+      console.log('No image path provided, using placeholder');
+      return 'https://via.placeholder.com/150';
+    }
+
+    try {
+      // Remove any leading slashes and ensure proper URL construction
+      const cleanPath = imagePath.replace(/^\/+/, '');
+      
+      // Get the base URL without the /api suffix
+      const baseUrl = API_URL.split('/api')[0];
+      
+      // Construct the full URL
+      const url = `${baseUrl}/uploads/${cleanPath}`;
+      
+      console.log('Image URL Debug:', {
+        originalPath: imagePath,
+        cleanPath: cleanPath,
+        baseUrl: baseUrl,
+        fullUrl: url,
+        API_URL: API_URL
+      });
+      
+      return url;
+    } catch (error) {
+      console.error('Error constructing image URL:', error);
+      return 'https://via.placeholder.com/150';
+    }
+  };
+
+  const handleImageError = (storyId: string, error: any) => {
+    const errorMessage = error.nativeEvent.error;
+    console.error('Image Load Error Details:', {
+      storyId,
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+      story: stories.find(s => s._id === storyId)
+    });
+    setImageLoadErrors(prev => ({
+      ...prev,
+      [storyId]: errorMessage
+    }));
+  };
+
+  // Add this function to test image URLs
+  const testImageUrl = async (url: string) => {
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      console.log('Image URL Test:', {
+        url,
+        status: response.status,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+      return response.ok;
+    } catch (error: any) {
+      console.error('Image URL Test Failed:', {
+        url,
+        error: error.message
+      });
+      return false;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.headerRow}>
@@ -258,6 +371,98 @@ export default function AddStories() {
           </View>
         </View>
       )}
+      {/* Story Details Modal */}
+      {detailsModalVisible && selectedStory && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.detailsModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Story Details</Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setDetailsModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Fixed Image Section */}
+            <View style={styles.fixedImageContainer}>
+              <Image
+                source={{ 
+                  uri: getImageUrl(selectedStory.storyImage?.imageUrl)
+                }}
+                style={styles.detailsImage}
+                resizeMode="cover"
+                onError={(e) => handleImageError(selectedStory._id, e)}
+              />
+              {imageLoadErrors[selectedStory._id] && (
+                <View style={styles.modalImageErrorContainer}>
+                  <Ionicons name="alert-circle-outline" size={32} color="#FF6B6B" />
+                  <Text style={styles.modalImageErrorText}>Image failed to load</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Scrollable Details Section */}
+            <ScrollView style={styles.modalScroll}>
+              <View style={styles.detailsInfo}>
+                <Text style={styles.detailsTitle}>{selectedStory.title}</Text>
+                
+                <View style={styles.detailsMeta}>
+                  <Text style={styles.detailsLabel}>Language:</Text>
+                  <Text style={styles.detailsValue}>
+                    {selectedStory.language === 'english' ? 'English' : 'Tagalog'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailsMeta}>
+                  <Text style={styles.detailsLabel}>Created:</Text>
+                  <Text style={styles.detailsValue}>
+                    {new Date(selectedStory.createdAt).toLocaleDateString()}
+                  </Text>
+                </View>
+
+                {selectedStory.storyFile && (
+                  <View style={styles.detailsMeta}>
+                    <Text style={styles.detailsLabel}>Story File:</Text>
+                    <Text style={styles.detailsValue}>
+                      {selectedStory.storyFile.fileName}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.updateButton]}
+                onPress={() => {
+                  // Handle update
+                  console.log('Update story:', selectedStory);
+                }}
+              >
+                <Ionicons name="create-outline" size={20} color="#fff" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>Update</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.deleteButton]}
+                onPress={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={20} color="#fff" style={styles.buttonIcon} />
+                    <Text style={styles.buttonText}>Delete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
       <ScrollView style={styles.storiesContainer}>
         {loadingStories ? (
           <View style={styles.loadingContainer}>
@@ -269,39 +474,66 @@ export default function AddStories() {
           </View>
         ) : (
           <View style={styles.storiesGrid}>
-            {stories.map(story => (
-              <TouchableOpacity 
-                key={story._id} 
-                style={styles.storyCard}
-                onPress={() => {
-                  // Handle story selection
-                  console.log('Selected story:', story);
-                }}
-              >
-                <Image
-                  source={{ 
-                    uri: story.storyImage?.imageUrl 
-                      ? `${API_URL.replace('/api', '')}/uploads/${story.storyImage.imageUrl}`
-                      : 'https://via.placeholder.com/150'
+            {stories.map(story => {
+              const imageUrl = getImageUrl(story.storyImage?.imageUrl);
+              console.log(`Story ${story._id} Image URL:`, imageUrl);
+              return (
+                <TouchableOpacity 
+                  key={story._id} 
+                  style={styles.storyCard}
+                  onPress={() => {
+                    setSelectedStory(story);
+                    setDetailsModalVisible(true);
                   }}
-                  style={styles.storyImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.storyInfo}>
-                  <Text style={styles.storyTitle} numberOfLines={2}>
-                    {story.title}
-                  </Text>
-                  <View style={styles.storyMeta}>
-                    <Text style={styles.storyLanguage}>
-                      {story.language === 'english' ? 'English' : 'Tagalog'}
+                >
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.storyImage}
+                    resizeMode="cover"
+                    onError={(e) => {
+                      console.error('Image Load Error:', {
+                        storyId: story._id,
+                        imageUrl,
+                        error: e.nativeEvent.error,
+                        timestamp: new Date().toISOString()
+                      });
+                      handleImageError(story._id, e);
+                      // Test the image URL when an error occurs
+                      testImageUrl(imageUrl);
+                    }}
+                    onLoad={() => {
+                      console.log('Image loaded successfully:', {
+                        storyId: story._id,
+                        imageUrl,
+                        timestamp: new Date().toISOString()
+                      });
+                    }}
+                  />
+                  {imageLoadErrors[story._id] && (
+                    <View style={styles.imageErrorContainer}>
+                      <Ionicons name="alert-circle-outline" size={24} color="#FF6B6B" />
+                      <Text style={styles.imageErrorText}>Image failed to load</Text>
+                      <Text style={styles.imageErrorDetails}>
+                        {imageLoadErrors[story._id]}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.storyInfo}>
+                    <Text style={styles.storyTitle} numberOfLines={2}>
+                      {story.title}
                     </Text>
-                    <Text style={styles.storyDate}>
-                      {new Date(story.createdAt).toLocaleDateString()}
-                    </Text>
+                    <View style={styles.storyMeta}>
+                      <Text style={styles.storyLanguage}>
+                        {story.language === 'english' ? 'English' : 'Tagalog'}
+                      </Text>
+                      <Text style={styles.storyDate}>
+                        {new Date(story.createdAt).toLocaleDateString()}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -501,6 +733,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 150,
     backgroundColor: '#f0f0f0',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   storyInfo: {
     padding: 12,
@@ -543,6 +777,124 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#999',
+  },
+  detailsModalContent: {
+    width: '90%',
+    maxHeight: '80%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  fixedImageContainer: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  detailsImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: '#f0f0f0',
+  },
+  modalScroll: {
+    flex: 1,
+    marginBottom: 16,
+  },
+  detailsInfo: {
+    padding: 8,
+  },
+  detailsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  detailsMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  detailsLabel: {
+    fontSize: 16,
+    color: '#666',
+    width: 100,
+  },
+  detailsValue: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  modalButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+  },
+  updateButton: {
+    backgroundColor: '#4A90E2',
+  },
+  deleteButton: {
+    backgroundColor: '#FF6B6B',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  imageErrorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#f8f8f8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  imageErrorText: {
+    color: '#FF6B6B',
+    marginTop: 8,
+    fontSize: 12,
+  },
+  modalImageErrorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#f8f8f8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  modalImageErrorText: {
+    color: '#FF6B6B',
+    marginTop: 8,
+    fontSize: 14,
+  },
+  imageErrorDetails: {
+    color: '#FF6B6B',
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 8,
   },
 });
 

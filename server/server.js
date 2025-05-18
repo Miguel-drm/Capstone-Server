@@ -6,7 +6,7 @@ const path = require('path');
 const connectDB = require('./connect.cjs');
 const authRoutes = require('./routes/auth');
 const uploadRouter = require('./routes/upload');
-const storyUploadRouter = require('./routes/storyUpload');
+const storyUploadRouter = require('./routes/story');
 const verifyToken = require('./middleware/verifyToken');
 
 // Load environment variables from config.env
