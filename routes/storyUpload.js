@@ -20,11 +20,35 @@ const storage = multer.diskStorage({
   }
 });
 
+// File filter function
+const fileFilter = (req, file, cb) => {
+  // Accept images and documents
+  if (file.fieldname === 'storyImage') {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed for story images'), false);
+    }
+  } else if (file.fieldname === 'storyFile') {
+    if (file.mimetype === 'application/pdf' || 
+        file.mimetype === 'application/msword' || 
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and Word documents are allowed for story files'), false);
+    }
+  } else {
+    cb(new Error('Invalid field name'), false);
+  }
+};
+
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 2 // Maximum 2 files (1 story file + 1 image)
+  },
+  fileFilter: fileFilter
 });
 
 // Upload a new story
@@ -70,6 +94,17 @@ router.post('/upload', upload.fields([
     console.error('Error uploading story:', error);
     res.status(500).json({ message: 'Error uploading story', error: error.message });
   }
+});
+
+// Error handling middleware for multer errors
+router.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: 'File size too large. Maximum size is 10MB' });
+    }
+    return res.status(400).json({ message: error.message });
+  }
+  next(error);
 });
 
 // Get all stories
