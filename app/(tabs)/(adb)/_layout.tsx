@@ -32,7 +32,7 @@ export default function AdbLayout() {
 
   const menuItems: MenuItem[] = [
     { icon: 'home-outline', label: 'Dashboard', route: '/(tabs)/adminDashboard' },
-    { icon: 'book-outline', label: 'Add Stories', route: '/(tabs)/(adb)/addStories' },
+    { icon: 'book-outline', label: 'Stories', route: '/(tabs)/(adb)/addStories' },
     { icon: 'log-out-outline', label: 'Logout', route: '/login' },
   ];
 

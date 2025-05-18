@@ -5,7 +5,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import Colors from '@/constants/Colors';
 import CustomModal from '@/constants/CustomModal';
 import InstructionModal from '@/constants/InstructionModal';
-import { api, API_URL } from '../../utils/api';    
+import { api, API_URL, getHeaders } from '../../utils/api';    
 
 interface Student {
   _id: string;  // MongoDB's _id field
@@ -37,7 +37,9 @@ export default function ClassListScreen() {
       setLoading(true);
       console.log('Fetching students from:', `${API_URL}/upload/students`);
       
-      const response = await fetch(`${API_URL}/upload/students`);
+      const response = await fetch(`${API_URL}/upload/students`, {
+        headers: await getHeaders()
+      });
       console.log('Response status:', response.status);
       
       const responseText = await response.text();
@@ -109,12 +111,12 @@ export default function ClassListScreen() {
 
       // Make the request
       console.log('Sending request to:', `${API_URL}/upload/upload`);
+      const headers = await getHeaders();
+      delete (headers as any)['Content-Type']; // Let fetch set the correct boundary for multipart/form-data
       const uploadResponse = await fetch(`${API_URL}/upload/upload`, {
         method: 'POST',
         body: formData,
-        headers: {
-          'Accept': 'application/json',
-        },
+        headers,
       });
 
       console.log('Response status:', uploadResponse.status);
@@ -187,6 +189,13 @@ export default function ClassListScreen() {
     }
     return groups;
   }, []);
+
+  // Sort groups by grade number ascending
+  groups.sort((a, b) => {
+    const numA = parseInt(a.importBatchId.replace(/[^0-9]/g, ''), 10);
+    const numB = parseInt(b.importBatchId.replace(/[^0-9]/g, ''), 10);
+    return numA - numB;
+  });
 
   return (
     <View style={styles.container}>
