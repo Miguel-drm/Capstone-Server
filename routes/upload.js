@@ -489,25 +489,68 @@ router.post('/story', storyUpload, async (req, res) => {
         console.log('Received story upload request');
         console.log('Request body:', req.body);
         console.log('Request files:', req.files);
-        console.log('Request user:', req.user);
 
-        if (!req.files) {
-            return res.status(400).json({ message: 'No files uploaded' });
+        // Validate request body
+        if (!req.body.title || !req.body.language) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Title and language are required' 
+            });
         }
 
-        if (!req.user || !req.user._id) {
-            return res.status(401).json({ message: 'Authentication required' });
+        // Validate files
+        if (!req.files || !req.files.storyFile || !req.files.storyImage) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Both story file and image are required' 
+            });
         }
 
-        const story = await processStoryUpload(req.files, req.body, req.user._id);
-        
+        // Validate language
+        if (!['english', 'tagalog'].includes(req.body.language)) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Language must be either english or tagalog' 
+            });
+        }
+
+        const storyFile = req.files.storyFile[0];
+        const storyImage = req.files.storyImage[0];
+
+        // Create story data object
+        const storyData = {
+            title: req.body.title.trim(),
+            language: req.body.language,
+            storyFile: {
+                fileName: storyFile.originalname,
+                fileUrl: path.relative(path.join(__dirname, '..'), storyFile.path),
+                fileType: storyFile.mimetype,
+                fileSize: storyFile.size
+            },
+            storyImage: {
+                imageUrl: path.relative(path.join(__dirname, '..'), storyImage.path),
+                imageType: storyImage.mimetype,
+                imageSize: storyImage.size
+            },
+            uploadedBy: req.user._id,
+            status: 'pending'
+        };
+
+        // Create new story
+        const story = new Story(storyData);
+        await story.save();
+
         res.status(201).json({
+            success: true,
             message: 'Story uploaded successfully',
             story: story.getStoryDetails()
         });
     } catch (error) {
         console.error('Story upload error:', error);
-        res.status(400).json({ message: error.message });
+        res.status(400).json({ 
+            success: false,
+            message: error.message || 'Error uploading story'
+        });
     }
 });
 
