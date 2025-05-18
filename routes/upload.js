@@ -499,7 +499,19 @@ router.post('/story', storyUpload, async (req, res) => {
         }
 
         // Validate files
-        if (!req.files || !req.files.storyFile || !req.files.storyImage) {
+        if (!req.files) {
+            console.log('No files received in request');
+            return res.status(400).json({ 
+                success: false,
+                message: 'No files uploaded' 
+            });
+        }
+
+        if (!req.files.storyFile || !req.files.storyImage) {
+            console.log('Missing required files:', {
+                hasStoryFile: !!req.files.storyFile,
+                hasStoryImage: !!req.files.storyImage
+            });
             return res.status(400).json({ 
                 success: false,
                 message: 'Both story file and image are required' 
@@ -516,6 +528,19 @@ router.post('/story', storyUpload, async (req, res) => {
 
         const storyFile = req.files.storyFile[0];
         const storyImage = req.files.storyImage[0];
+
+        console.log('Processing files:', {
+            storyFile: {
+                originalname: storyFile.originalname,
+                mimetype: storyFile.mimetype,
+                size: storyFile.size
+            },
+            storyImage: {
+                originalname: storyImage.originalname,
+                mimetype: storyImage.mimetype,
+                size: storyImage.size
+            }
+        });
 
         // Create story data object
         const storyData = {
@@ -536,9 +561,13 @@ router.post('/story', storyUpload, async (req, res) => {
             status: 'pending'
         };
 
+        console.log('Creating story with data:', storyData);
+
         // Create new story
         const story = new Story(storyData);
         await story.save();
+
+        console.log('Story saved successfully:', story._id);
 
         res.status(201).json({
             success: true,
