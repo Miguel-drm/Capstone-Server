@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const xlsx = require('xlsx');
 const Student = require('../models/Student');
+const Story = require('../models/Stories');
 const { v4: uuidv4 } = require('uuid');
 
 // Configure multer for file upload
@@ -19,6 +20,47 @@ const upload = multer({
             return cb(null, true);
         }
         cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
+    }
+});
+
+// Configure multer for story uploads
+const storyStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        // Determine if it's a story file or image
+        const isImage = file.mimetype.startsWith('image/');
+        const uploadPath = isImage ? 'uploads/stories/images' : 'uploads/stories/files';
+        cb(null, uploadPath);
+    },
+    filename: function (req, file, cb) {
+        // Generate unique filename
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = file.originalname.split('.').pop();
+        cb(null, file.fieldname + '-' + uniqueSuffix + '.' + ext);
+    }
+});
+
+const storyUpload = multer({
+    storage: storyStorage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB limit for stories
+    },
+    fileFilter: (req, file, cb) => {
+        // Allow PDF, DOC, DOCX for story files
+        if (file.fieldname === 'storyFile') {
+            const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            if (allowedTypes.includes(file.mimetype)) {
+                return cb(null, true);
+            }
+            return cb(new Error('Only PDF and Word documents are allowed for story files!'), false);
+        }
+        // Allow images for story images
+        if (file.fieldname === 'storyImage') {
+            if (file.mimetype.startsWith('image/')) {
+                return cb(null, true);
+            }
+            return cb(new Error('Only image files are allowed for story images!'), false);
+        }
+        cb(new Error('Invalid field name'), false);
     }
 });
 
@@ -316,6 +358,198 @@ router.get('/grouped', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error fetching grouped students'
+        });
+    }
+});
+
+// Story Functions
+const validateStoryData = (storyData) => {
+    const errors = [];
+    if (!storyData.title || typeof storyData.title !== 'string' || storyData.title.trim().length === 0) {
+        errors.push('Title is required');
+    }
+    if (!storyData.language || !['english', 'tagalog'].includes(storyData.language)) {
+        errors.push('Language must be either english or tagalog');
+    }
+    return errors;
+};
+
+const processStoryUpload = async (files, body) => {
+    try {
+        // Validate required files
+        if (!files || !files.storyFile || !files.storyImage) {
+            throw new Error('Both story file and image are required');
+        }
+
+        const storyFile = files.storyFile[0];
+        const storyImage = files.storyImage[0];
+
+        // Validate file types
+        const allowedStoryTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+        if (!allowedStoryTypes.includes(storyFile.mimetype)) {
+            throw new Error('Invalid story file type. Only PDF and Word documents are allowed.');
+        }
+
+        if (!storyImage.mimetype.startsWith('image/')) {
+            throw new Error('Invalid image file type. Only images are allowed.');
+        }
+
+        // Create story data object
+        const storyData = {
+            title: body.title,
+            language: body.language,
+            storyFile: {
+                fileName: storyFile.originalname,
+                fileUrl: `/uploads/stories/files/${storyFile.filename}`,
+                fileType: storyFile.mimetype
+            },
+            storyImage: {
+                imageUrl: `/uploads/stories/images/${storyImage.filename}`,
+                imageType: storyImage.mimetype
+            }
+        };
+
+        // Validate story data
+        const validationErrors = validateStoryData(storyData);
+        if (validationErrors.length > 0) {
+            throw new Error(validationErrors.join(', '));
+        }
+
+        // Create and save story
+        const story = new Story(storyData);
+        await story.save();
+
+        return story;
+    } catch (error) {
+        throw new Error(`Error processing story upload: ${error.message}`);
+    }
+};
+
+// Route for handling story upload
+router.post('/story', storyUpload.fields([
+    { name: 'storyFile', maxCount: 1 },
+    { name: 'storyImage', maxCount: 1 }
+]), async (req, res) => {
+    try {
+        const story = await processStoryUpload(req.files, req.body);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Story uploaded successfully',
+            story: story.getStoryDetails()
+        });
+    } catch (error) {
+        console.error('Error uploading story:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Route for getting all stories with pagination
+router.get('/stories', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const [stories, total] = await Promise.all([
+            Story.find({})
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .select('title language storyFile storyImage createdAt'),
+            Story.countDocuments({})
+        ]);
+
+        res.status(200).json({
+            success: true,
+            count: stories.length,
+            total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page,
+            stories: stories
+        });
+    } catch (error) {
+        console.error('Error fetching stories:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching stories'
+        });
+    }
+});
+
+// Route for getting stories by language with pagination
+router.get('/stories/:language', async (req, res) => {
+    try {
+        const { language } = req.params;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        if (!['english', 'tagalog'].includes(language)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid language parameter'
+            });
+        }
+
+        const [stories, total] = await Promise.all([
+            Story.find({ language })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .select('title language storyFile storyImage createdAt'),
+            Story.countDocuments({ language })
+        ]);
+
+        res.status(200).json({
+            success: true,
+            count: stories.length,
+            total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page,
+            stories: stories
+        });
+    } catch (error) {
+        console.error('Error fetching stories:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching stories'
+        });
+    }
+});
+
+// Route for deleting a story
+router.delete('/stories/:id', async (req, res) => {
+    try {
+        const story = await Story.findById(req.params.id);
+        if (!story) {
+            return res.status(404).json({
+                success: false,
+                message: 'Story not found'
+            });
+        }
+
+        // TODO: Delete associated files from storage
+        // This would require implementing file deletion logic
+
+        await story.remove();
+
+        res.status(200).json({
+            success: true,
+            message: 'Story deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting story:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error deleting story'
         });
     }
 });
