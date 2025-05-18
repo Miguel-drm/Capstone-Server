@@ -362,7 +362,7 @@ router.get('/grouped', async (req, res) => {
     }
 });
 
-// Story Functions
+// Function to validate story data
 const validateStoryData = (storyData) => {
     const errors = [];
     if (!storyData.title || typeof storyData.title !== 'string' || storyData.title.trim().length === 0) {
@@ -371,32 +371,25 @@ const validateStoryData = (storyData) => {
     if (!storyData.language || !['english', 'tagalog'].includes(storyData.language)) {
         errors.push('Language must be either english or tagalog');
     }
+    if (!storyData.storyFile) {
+        errors.push('Story file is required');
+    }
+    if (!storyData.storyImage) {
+        errors.push('Story image is required');
+    }
     return errors;
 };
 
-const processStoryUpload = async (files, body) => {
+// Function to process story upload
+const processStoryUpload = async (files, body, userId) => {
     try {
         // Validate required files
-        if (!files || !files.storyFile || !files.storyImage) {
+        if (!files.storyFile || !files.storyImage) {
             throw new Error('Both story file and image are required');
         }
 
         const storyFile = files.storyFile[0];
         const storyImage = files.storyImage[0];
-
-        // Validate file types
-        const allowedStoryTypes = [
-            'application/pdf',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        ];
-        if (!allowedStoryTypes.includes(storyFile.mimetype)) {
-            throw new Error('Invalid story file type. Only PDF and Word documents are allowed.');
-        }
-
-        if (!storyImage.mimetype.startsWith('image/')) {
-            throw new Error('Invalid image file type. Only images are allowed.');
-        }
 
         // Create story data object
         const storyData = {
@@ -404,13 +397,17 @@ const processStoryUpload = async (files, body) => {
             language: body.language,
             storyFile: {
                 fileName: storyFile.originalname,
-                fileUrl: `/uploads/stories/files/${storyFile.filename}`,
-                fileType: storyFile.mimetype
+                fileUrl: storyFile.path,
+                fileType: storyFile.mimetype,
+                fileSize: storyFile.size
             },
             storyImage: {
-                imageUrl: `/uploads/stories/images/${storyImage.filename}`,
-                imageType: storyImage.mimetype
-            }
+                imageUrl: storyImage.path,
+                imageType: storyImage.mimetype,
+                imageSize: storyImage.size
+            },
+            uploadedBy: userId,
+            status: 'pending'
         };
 
         // Validate story data
@@ -419,7 +416,7 @@ const processStoryUpload = async (files, body) => {
             throw new Error(validationErrors.join(', '));
         }
 
-        // Create and save story
+        // Create new story
         const story = new Story(storyData);
         await story.save();
 
@@ -429,25 +426,29 @@ const processStoryUpload = async (files, body) => {
     }
 };
 
-// Route for handling story upload
+// Story upload route
 router.post('/story', storyUpload.fields([
     { name: 'storyFile', maxCount: 1 },
     { name: 'storyImage', maxCount: 1 }
 ]), async (req, res) => {
     try {
-        const story = await processStoryUpload(req.files, req.body);
+        if (!req.files) {
+            return res.status(400).json({ message: 'No files uploaded' });
+        }
+
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        const story = await processStoryUpload(req.files, req.body, req.user._id);
         
-        res.status(200).json({
-            success: true,
+        res.status(201).json({
             message: 'Story uploaded successfully',
             story: story.getStoryDetails()
         });
     } catch (error) {
-        console.error('Error uploading story:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        console.error('Story upload error:', error);
+        res.status(400).json({ message: error.message });
     }
 });
 

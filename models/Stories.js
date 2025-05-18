@@ -24,6 +24,10 @@ const storySchema = new mongoose.Schema({
     fileType: {
       type: String,
       required: [true, 'File type is required']
+    },
+    fileSize: {
+      type: Number,
+      required: [true, 'File size is required']
     }
   },
   storyImage: {
@@ -34,7 +38,21 @@ const storySchema = new mongoose.Schema({
     imageType: {
       type: String,
       required: [true, 'Image type is required']
+    },
+    imageSize: {
+      type: Number,
+      required: [true, 'Image size is required']
     }
+  },
+  uploadedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Uploader information is required']
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
   },
   createdAt: {
     type: Date,
@@ -48,8 +66,10 @@ const storySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Add index for faster queries
+// Add indexes for faster queries
 storySchema.index({ title: 1, language: 1 });
+storySchema.index({ uploadedBy: 1 });
+storySchema.index({ status: 1 });
 
 // Add method to get story details
 storySchema.methods.getStoryDetails = function() {
@@ -59,9 +79,21 @@ storySchema.methods.getStoryDetails = function() {
     language: this.language,
     storyFile: this.storyFile,
     storyImage: this.storyImage,
+    uploadedBy: this.uploadedBy,
+    status: this.status,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt
   };
+};
+
+// Add static method to find stories by language
+storySchema.statics.findByLanguage = function(language) {
+  return this.find({ language, status: 'approved' });
+};
+
+// Add static method to find stories by uploader
+storySchema.statics.findByUploader = function(uploaderId) {
+  return this.find({ uploadedBy: uploaderId });
 };
 
 const Story = mongoose.model('Story', storySchema);
