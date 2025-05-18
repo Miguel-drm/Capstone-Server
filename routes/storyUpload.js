@@ -16,7 +16,8 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
 
@@ -92,18 +93,23 @@ router.post('/upload', upload.fields([
       return res.status(400).json({ message: 'Title is required' });
     }
 
+    // Create relative paths for storage in database
+    const getRelativePath = (filePath) => {
+      return filePath.replace(/\\/g, '/').split('uploads/')[1];
+    };
+
     const story = new Stories({
       title,
       language: language || 'english',
       storyFile: storyFile ? {
         fileName: storyFile.originalname,
-        fileUrl: storyFile.path.replace(/\\/g, '/'),
+        fileUrl: getRelativePath(storyFile.path),
         fileType: storyFile.mimetype,
         fileSize: storyFile.size
       } : null,
       storyImage: storyImage ? {
         fileName: storyImage.originalname,
-        imageUrl: storyImage.path.replace(/\\/g, '/'),
+        imageUrl: getRelativePath(storyImage.path),
         imageType: storyImage.mimetype,
         imageSize: storyImage.size
       } : null
