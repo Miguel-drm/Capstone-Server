@@ -444,7 +444,7 @@ const processStoryUpload = async (files, body, userId) => {
             path: storyImage.path
         });
 
-        // Create story data object with relative paths
+        // Create story data object
         const storyData = {
             title: body.title,
             language: body.language,
