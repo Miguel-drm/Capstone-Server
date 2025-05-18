@@ -22,6 +22,12 @@ const storage = multer.diskStorage({
 
 // File filter function
 const fileFilter = (req, file, cb) => {
+  console.log('Processing file:', {
+    fieldname: file.fieldname,
+    mimetype: file.mimetype,
+    originalname: file.originalname
+  });
+
   // Accept images and documents
   if (file.fieldname === 'storyImage') {
     if (file.mimetype.startsWith('image/')) {
@@ -59,12 +65,28 @@ router.post('/upload', upload.fields([
   try {
     console.log('Received upload request:', {
       body: req.body,
-      files: req.files
+      files: req.files,
+      headers: req.headers
     });
 
     const { title, language } = req.body;
     const storyFile = req.files['storyFile']?.[0];
     const storyImage = req.files['storyImage']?.[0];
+
+    console.log('Processed files:', {
+      storyFile: storyFile ? {
+        originalname: storyFile.originalname,
+        mimetype: storyFile.mimetype,
+        size: storyFile.size,
+        path: storyFile.path
+      } : null,
+      storyImage: storyImage ? {
+        originalname: storyImage.originalname,
+        mimetype: storyImage.mimetype,
+        size: storyImage.size,
+        path: storyImage.path
+      } : null
+    });
 
     if (!title) {
       return res.status(400).json({ message: 'Title is required' });
@@ -98,6 +120,7 @@ router.post('/upload', upload.fields([
 
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {
+  console.error('Multer error:', error);
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ message: 'File size too large. Maximum size is 10MB' });
