@@ -14,6 +14,16 @@ interface Student {
 interface Story {
   _id: string;
   title: string;
+  storyImage?: {
+    fileUrl?: string;
+    [key: string]: any;
+  };
+  storyFile?: {
+    fileUrl?: string;
+    gridFsId?: string;
+    fileType?: string;
+    [key: string]: any;
+  };
 }
 
 export default function ReadingScreen() {
@@ -68,9 +78,9 @@ export default function ReadingScreen() {
       }
       setLoadingStoryText(true);
       try {
-        // Fetch the story details to get the file URL and gridFsId
-        const res = await api.stories.getAll();
-        const story = res.stories.find((s: any) => s._id === selectedStory);
+        // Fetch only the selected story from the backend
+        const res = await api.stories.getById(selectedStory);
+        const story = res.story;
         if (story) {
           // Set story image if available
           if (story.storyImage && story.storyImage.fileUrl) {
@@ -102,8 +112,9 @@ export default function ReadingScreen() {
               const res = await api.extractText(extractPayload);
               const extractedText = res.text || '';
               setStoryText(extractedText.trim() ? extractedText : 'No text extracted from file.');
-            } catch (e) {
-              setStoryText('Failed to extract text from file.');
+            } catch (e: any) {
+              console.error('ExtractText error:', e);
+              setStoryText(e?.message ? `Failed to extract text: ${e.message}` : 'Failed to extract text from file.');
             }
           } else {
             setStoryText('Unsupported file type for reading.');
@@ -118,7 +129,9 @@ export default function ReadingScreen() {
         setLoadingStoryText(false);
       }
     };
-    fetchStoryText();
+    if (selectedStory) {
+      fetchStoryText();
+    }
   }, [selectedStory]);
 
   return (

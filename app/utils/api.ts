@@ -200,6 +200,13 @@ export const api = {
       });
       return handleResponse(response);
     },
+
+    getById: async (id: string) => {
+      const response = await fetch(`${API_URL}/stories/${id}`, {
+        headers: await getHeaders(),
+      });
+      return handleResponse(response);
+    },
   },
 
   // Text extraction endpoint
