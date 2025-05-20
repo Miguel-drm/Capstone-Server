@@ -5,6 +5,9 @@ const path = require('path');
 const fs = require('fs');
 const Stories = require('../models/Stories');
 
+// Serve static files from the uploads directory
+router.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -95,7 +98,18 @@ router.post('/upload', upload.fields([
 
     // Create relative paths for storage in database
     const getRelativePath = (filePath) => {
-      return filePath.replace(/\\/g, '/').split('uploads/')[1];
+      try {
+        // Normalize path separators and get the path after 'uploads/'
+        const normalizedPath = filePath.replace(/\\/g, '/');
+        const parts = normalizedPath.split('uploads/');
+        if (parts.length !== 2) {
+          throw new Error('Invalid file path structure');
+        }
+        return parts[1];
+      } catch (error) {
+        console.error('Error processing file path:', error);
+        throw error;
+      }
     };
 
     const story = new Stories({
