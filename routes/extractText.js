@@ -17,39 +17,27 @@ router.post('/', async (req, res) => {
   let finished = false; // Prevent multiple responses
   try {
     if (fileType === 'application/pdf' && gridFsId) {
-      // Extract PDF from GridFS
+      // Extract PDF from GridFS using a promise-based approach
       const db = mongoose.connection.db;
       const bucket = new GridFSBucket(db, { bucketName: 'storyFiles' });
-      const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(gridFsId));
-      let chunks = [];
-      downloadStream.on('data', (chunk) => chunks.push(chunk));
-      downloadStream.on('error', (err) => {
-        if (!finished) {
-          finished = true;
-          console.error('GridFS download error:', err);
-          return res.status(500).json({ message: 'Failed to download PDF from GridFS', error: err.message });
+      try {
+        const buffer = await new Promise((resolve, reject) => {
+          const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(gridFsId));
+          let chunks = [];
+          downloadStream.on('data', (chunk) => chunks.push(chunk));
+          downloadStream.on('error', (err) => reject(err));
+          downloadStream.on('end', () => resolve(Buffer.concat(chunks)));
+        });
+        // Basic PDF validation: check for %PDF header
+        if (!buffer || buffer.length < 4 || buffer.toString('utf8', 0, 4) !== '%PDF') {
+          throw new Error('Invalid PDF file (missing %PDF header)');
         }
-      });
-      downloadStream.on('end', async () => {
-        if (finished) return;
-        finished = true;
-        try {
-          const buffer = Buffer.concat(chunks);
-          const data = await pdfParse(buffer);
-          return res.json({ text: data.text });
-        } catch (error) {
-          console.error('Error extracting text from GridFS PDF:', error);
-          return res.status(500).json({ message: 'Failed to extract text from PDF in GridFS', error: error.message });
-        }
-      });
-      // Add a timeout to prevent hanging
-      setTimeout(() => {
-        if (!finished) {
-          finished = true;
-          return res.status(504).json({ message: 'PDF extraction timed out' });
-        }
-      }, 10000); // 10 seconds
-      return;
+        const data = await pdfParse(buffer);
+        return res.json({ text: data.text });
+      } catch (error) {
+        console.error('Error extracting text from GridFS PDF:', error);
+        return res.status(500).json({ message: 'Failed to extract text from PDF in GridFS', error: error.message });
+      }
     }
     // fileUrl is expected to be relative to uploads, e.g. 'myfile.pdf' or 'subdir/myfile.pdf'
     const uploadsDir = path.join(__dirname, '../uploads');
