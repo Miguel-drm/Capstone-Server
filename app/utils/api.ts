@@ -180,6 +180,42 @@ export const api = {
       });
       return handleResponse(response);
     }
+  },
+
+  // Student endpoints
+  students: {
+    getAll: async () => {
+      const response = await fetch(`${API_URL}/upload/students`, {
+        headers: await getHeaders(),
+      });
+      return handleResponse(response);
+    },
+  },
+
+  // Story endpoints
+  stories: {
+    getAll: async () => {
+      const response = await fetch(`${API_URL}/stories`, {
+        headers: await getHeaders(),
+      });
+      return handleResponse(response);
+    },
+  },
+
+  // Text extraction endpoint
+  extractText: async ({ fileUrl, fileType, gridFsId }: { fileUrl?: string; fileType: string; gridFsId?: string }) => {
+    const response = await fetch(`${API_URL}/extract-text`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fileUrl, fileType, gridFsId }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Failed to extract text');
+    }
+    return response.json();
   }
 };
 
