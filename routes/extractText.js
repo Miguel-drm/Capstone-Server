@@ -14,6 +14,7 @@ router.post('/', async (req, res) => {
   if ((!fileUrl && !gridFsId) || !fileType) {
     return res.status(400).json({ message: 'fileUrl or gridFsId and fileType are required' });
   }
+  let finished = false; // Prevent multiple responses
   try {
     if (fileType === 'application/pdf' && gridFsId) {
       // Extract PDF from GridFS
@@ -23,10 +24,15 @@ router.post('/', async (req, res) => {
       let chunks = [];
       downloadStream.on('data', (chunk) => chunks.push(chunk));
       downloadStream.on('error', (err) => {
-        console.error('GridFS download error:', err);
-        return res.status(500).json({ message: 'Failed to download PDF from GridFS', error: err.message });
+        if (!finished) {
+          finished = true;
+          console.error('GridFS download error:', err);
+          return res.status(500).json({ message: 'Failed to download PDF from GridFS', error: err.message });
+        }
       });
       downloadStream.on('end', async () => {
+        if (finished) return;
+        finished = true;
         try {
           const buffer = Buffer.concat(chunks);
           const data = await pdfParse(buffer);
@@ -36,6 +42,13 @@ router.post('/', async (req, res) => {
           return res.status(500).json({ message: 'Failed to extract text from PDF in GridFS', error: error.message });
         }
       });
+      // Add a timeout to prevent hanging
+      setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          return res.status(504).json({ message: 'PDF extraction timed out' });
+        }
+      }, 10000); // 10 seconds
       return;
     }
     // fileUrl is expected to be relative to uploads, e.g. 'myfile.pdf' or 'subdir/myfile.pdf'
