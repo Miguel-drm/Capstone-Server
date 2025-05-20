@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Transcription = require('../models/Transcription');
-const Story = require('../models/Story');
+const Stories = require('../models/Stories');
 const verifyToken = require('../middleware/verifyToken');
 
 // Helper function to calculate accuracy
@@ -34,7 +34,7 @@ router.post('/', verifyToken, async (req, res) => {
     }
 
     // Get the story text to calculate accuracy
-    const story = await Story.findById(storyId);
+    const story = await Stories.findById(storyId);
     if (!story) {
       return res.status(404).json({
         success: false,
@@ -45,7 +45,7 @@ router.post('/', verifyToken, async (req, res) => {
     // Calculate accuracy
     const { accuracy, wordsRecognized, totalWords } = calculateAccuracy(
       transcription,
-      story.text
+      story.text || '' // Handle case where text might not be available
     );
 
     // Create new transcription
