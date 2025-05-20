@@ -4,15 +4,35 @@ const path = require('path');
 const fs = require('fs');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+const mongoose = require('mongoose');
+const { GridFSBucket } = require('mongodb');
 
 // POST /api/extract-text
 // Body: { fileUrl: string, fileType: string }
 router.post('/', async (req, res) => {
-  const { fileUrl, fileType } = req.body;
-  if (!fileUrl || !fileType) {
-    return res.status(400).json({ message: 'fileUrl and fileType are required' });
+  const { fileUrl, fileType, gridFsId } = req.body;
+  if ((!fileUrl && !gridFsId) || !fileType) {
+    return res.status(400).json({ message: 'fileUrl or gridFsId and fileType are required' });
   }
   try {
+    if (fileType === 'application/pdf' && gridFsId) {
+      // Extract PDF from GridFS
+      const db = mongoose.connection.db;
+      const bucket = new GridFSBucket(db, { bucketName: 'storyFiles' });
+      const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(gridFsId));
+      let chunks = [];
+      downloadStream.on('data', (chunk) => chunks.push(chunk));
+      downloadStream.on('error', (err) => {
+        console.error('GridFS download error:', err);
+        return res.status(500).json({ message: 'Failed to download PDF from GridFS', error: err.message });
+      });
+      downloadStream.on('end', async () => {
+        const buffer = Buffer.concat(chunks);
+        const data = await pdfParse(buffer);
+        return res.json({ text: data.text });
+      });
+      return;
+    }
     // fileUrl is expected to be relative to uploads, e.g. 'myfile.pdf' or 'subdir/myfile.pdf'
     const uploadsDir = path.join(__dirname, '../uploads');
     // Remove any leading slashes from fileUrl

@@ -15,7 +15,8 @@ const storySchema = new mongoose.Schema({
     fileName: String,
     fileUrl: String,
     fileType: String,
-    fileSize: Number
+    fileSize: Number,
+    gridFsId: mongoose.Schema.Types.ObjectId // Add GridFS file id
   },
   storyImage: {
     fileName: String,
@@ -41,4 +42,4 @@ storySchema.pre('save', function(next) {
 
 const Stories = mongoose.model('Stories', storySchema);
 
-module.exports = Stories; 
+module.exports = Stories;

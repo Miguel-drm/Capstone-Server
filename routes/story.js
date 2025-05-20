@@ -3,6 +3,9 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
+const { MongoClient, GridFSBucket } = require('mongodb');
+const gridfsStream = require('gridfs-stream');
 const Stories = require('../models/Stories');
 
 // Serve static files from the uploads directory
@@ -61,7 +64,16 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-// Upload a new story
+// GridFS setup
+let gfs, gridfsBucket;
+const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/capstone';
+mongoose.connection.on('connected', () => {
+  gridfsBucket = new GridFSBucket(mongoose.connection.db, { bucketName: 'storyFiles' });
+  gfs = gridfsStream(mongoose.connection.db, mongoose.mongo);
+  gfs.collection('storyFiles');
+});
+
+// Upload a new story (with GridFS for PDF)
 router.post('/upload', upload.fields([
   { name: 'storyFile', maxCount: 1 },
   { name: 'storyImage', maxCount: 1 }
@@ -112,26 +124,64 @@ router.post('/upload', upload.fields([
       }
     };
 
-    const story = new Stories({
-      title,
-      language: language || 'english',
-      storyFile: storyFile ? {
-        fileName: storyFile.originalname,
-        fileUrl: getRelativePath(storyFile.path),
-        fileType: storyFile.mimetype,
-        fileSize: storyFile.size
-      } : null,
-      storyImage: storyImage ? {
-        fileName: storyImage.originalname,
-        imageUrl: getRelativePath(storyImage.path),
-        imageType: storyImage.mimetype,
-        imageSize: storyImage.size
-      } : null
-    });
+    if (storyFile) {
+      // Save PDF to GridFS
+      const fileStream = fs.createReadStream(storyFile.path);
+      const uploadStream = gridfsBucket.openUploadStream(storyFile.originalname, {
+        contentType: storyFile.mimetype,
+        metadata: { title, language }
+      });
+      fileStream.pipe(uploadStream)
+        .on('error', (err) => {
+          console.error('GridFS upload error:', err);
+          return res.status(500).json({ message: 'Failed to upload PDF to GridFS', error: err.message });
+        })
+        .on('finish', async (file) => {
+          // Save story metadata with GridFS file id
+          const story = new Stories({
+            title,
+            language: language || 'english',
+            storyFile: {
+              fileName: storyFile.originalname,
+              fileType: storyFile.mimetype,
+              fileSize: storyFile.size,
+              gridFsId: file._id
+            },
+            storyImage: storyImage ? {
+              fileName: storyImage.originalname,
+              imageUrl: getRelativePath(storyImage.path),
+              imageType: storyImage.mimetype,
+              imageSize: storyImage.size
+            } : null
+          });
+          await story.save();
+          // Optionally delete file from disk
+          fs.unlinkSync(storyFile.path);
+          res.status(201).json({ message: 'Story uploaded successfully', story });
+        });
+      return;
+    } else {
+      const story = new Stories({
+        title,
+        language: language || 'english',
+        storyFile: storyFile ? {
+          fileName: storyFile.originalname,
+          fileUrl: getRelativePath(storyFile.path),
+          fileType: storyFile.mimetype,
+          fileSize: storyFile.size
+        } : null,
+        storyImage: storyImage ? {
+          fileName: storyImage.originalname,
+          imageUrl: getRelativePath(storyImage.path),
+          imageType: storyImage.mimetype,
+          imageSize: storyImage.size
+        } : null
+      });
 
-    await story.save();
-    console.log('Story saved successfully:', story);
-    res.status(201).json({ message: 'Story uploaded successfully', story });
+      await story.save();
+      console.log('Story saved successfully:', story);
+      res.status(201).json({ message: 'Story uploaded successfully', story });
+    }
   } catch (error) {
     console.error('Error uploading story:', error);
     res.status(500).json({ message: 'Error uploading story', error: error.message });
