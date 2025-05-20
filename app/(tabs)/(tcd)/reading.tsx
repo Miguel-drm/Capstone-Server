@@ -2,8 +2,7 @@ import { StyleSheet, Text, View, SafeAreaView, ActivityIndicator } from 'react-n
 import React, { useEffect, useState } from 'react';
 import { Picker } from '@react-native-picker/picker';
 import { api, API_URL } from '../../utils/api';
-import { ScrollView, TextInput } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import { ScrollView, Image } from 'react-native';
 
 // Add types for students and stories
 interface Student {
@@ -26,6 +25,7 @@ export default function ReadingScreen() {
   const [loadingStories, setLoadingStories] = useState(true);
   const [storyText, setStoryText] = useState('');
   const [loadingStoryText, setLoadingStoryText] = useState(false);
+  const [storyImage, setStoryImage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -63,6 +63,7 @@ export default function ReadingScreen() {
     const fetchStoryText = async () => {
       if (!selectedStory) {
         setStoryText('');
+        setStoryImage(null);
         return;
       }
       setLoadingStoryText(true);
@@ -70,6 +71,14 @@ export default function ReadingScreen() {
         // Fetch the story details to get the file URL and gridFsId
         const res = await api.stories.getAll();
         const story = res.stories.find((s: any) => s._id === selectedStory);
+        if (story) {
+          // Set story image if available
+          if (story.storyImage && story.storyImage.fileUrl) {
+            setStoryImage(`${API_URL}/${story.storyImage.fileUrl}`);
+          } else {
+            setStoryImage(null);
+          }
+        }
         if (story && story.storyFile && (story.storyFile.fileUrl || story.storyFile.gridFsId)) {
           const fileType = story.storyFile.fileType;
           const fileName = story.storyFile.fileUrl; // always relative
@@ -104,6 +113,7 @@ export default function ReadingScreen() {
         }
       } catch (e) {
         setStoryText('Failed to load story file.');
+        setStoryImage(null);
       } finally {
         setLoadingStoryText(false);
       }
@@ -117,59 +127,61 @@ export default function ReadingScreen() {
         <Text style={styles.title}>Reading Section</Text>
         <Text style={styles.subtitle}>Select a student and a story to begin</Text>
         {/* Student Dropdown */}
-        <View style={{ width: '100%', marginVertical: 16 }}>
+        <View style={styles.dropdownContainer}>
           <Text style={styles.dropdownLabel}>Select Student:</Text>
           {loadingStudents ? (
             <ActivityIndicator size="small" color="#4A90E2" />
           ) : (
-            <Picker
-              selectedValue={selectedStudent}
-              onValueChange={setSelectedStudent}
-              style={styles.picker}
-            >
-              <Picker.Item label="-- Select Student --" value="" />
-              {students.map((s) => (
-                <Picker.Item key={s._id} label={`${s.name} ${s.surname}`} value={s._id} />
-              ))}
-            </Picker>
+            <View style={styles.pickerWrapper}>
+              <Picker
+                selectedValue={selectedStudent}
+                onValueChange={setSelectedStudent}
+                style={styles.picker}
+              >
+                <Picker.Item label="-- Select Student --" value="" />
+                {students.map((s) => (
+                  <Picker.Item key={s._id} label={`${s.name} ${s.surname}`} value={s._id} />
+                ))}
+              </Picker>
+            </View>
           )}
         </View>
         {/* Story Dropdown */}
-        <View style={{ width: '100%', marginVertical: 16 }}>
+        <View style={styles.dropdownContainer}>
           <Text style={styles.dropdownLabel}>Select Story:</Text>
           {loadingStories ? (
             <ActivityIndicator size="small" color="#4A90E2" />
           ) : (
-            <Picker
-              selectedValue={selectedStory}
-              onValueChange={setSelectedStory}
-              style={styles.picker}
-            >
-              <Picker.Item label="-- Select Story --" value="" />
-              {stories.map((story) => (
-                <Picker.Item key={story._id} label={story.title} value={story._id} />
-              ))}
-            </Picker>
+            <View style={styles.pickerWrapper}>
+              <Picker
+                selectedValue={selectedStory}
+                onValueChange={setSelectedStory}
+                style={styles.picker}
+              >
+                <Picker.Item label="-- Select Story --" value="" />
+                {stories.map((story) => (
+                  <Picker.Item key={story._id} label={story.title} value={story._id} />
+                ))}
+              </Picker>
+            </View>
           )}
         </View>
+        {/* Story Image */}
+        {storyImage && (
+          <View style={styles.imageContainer}>
+            <Image source={{ uri: storyImage }} style={styles.storyImage} resizeMode="contain" />
+          </View>
+        )}
         {/* Story Text Field */}
-        <View style={{ width: '100%', flex: 1, marginTop: 16 }}>
+        <View style={styles.textAreaCard}>
           <Text style={styles.dropdownLabel}>Story Text:</Text>
           {loadingStoryText ? (
             <ActivityIndicator size="large" color="#4A90E2" />
           ) : (
-            <ScrollView style={{ flex: 1, backgroundColor: '#F0F7FF', borderRadius: 8, padding: 12 }}>
-              <TextInput
-                style={{ minHeight: 200, fontSize: 18, color: '#222' }}
-                value={storyText}
-                editable={false}
-                multiline
-                placeholder="Story text will appear here..."
-              />
-              {/* Display each word separately below (optional) */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 16 }}>
+            <ScrollView style={styles.textAreaScroll}>
+              <View style={styles.wordWrap}>
                 {storyText.split(/\s+/).map((word, idx) => (
-                  <Text key={idx} style={{ fontSize: 16, marginRight: 6, marginBottom: 6 }}>{word}</Text>
+                  <Text key={idx} style={styles.word}>{word}</Text>
                 ))}
               </View>
             </ScrollView>
@@ -183,7 +195,7 @@ export default function ReadingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f8fbff',
   },
   content: {
     flex: 1,
@@ -193,27 +205,88 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
+    color: '#2a3a4d',
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: '#4A90E2',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
+  },
+  dropdownContainer: {
+    width: '100%',
+    marginVertical: 10,
   },
   dropdownLabel: {
     fontSize: 16,
     color: '#333',
     marginBottom: 4,
     marginLeft: 4,
+    fontWeight: '600',
+  },
+  pickerWrapper: {
+    backgroundColor: '#F0F7FF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    marginBottom: 4,
+    width: '100%',
   },
   picker: {
-    backgroundColor: '#F0F7FF',
-    borderRadius: 8,
-    marginBottom: 8,
     width: '100%',
+    height: 44,
+    color: '#222',
+  },
+  imageContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  storyImage: {
+    width: '90%',
+    height: 160,
+    borderRadius: 12,
+    backgroundColor: '#e6eef8',
+  },
+  textAreaCard: {
+    width: '100%',
+    flex: 1,
+    marginTop: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  textAreaScroll: {
+    flex: 1,
+    backgroundColor: '#F0F7FF',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 6,
+  },
+  wordWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+  },
+  word: {
+    fontSize: 16,
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: '#e6eef8',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    color: '#2a3a4d',
   },
 });
