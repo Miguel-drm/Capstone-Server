@@ -186,14 +186,18 @@ router.delete('/:id', async (req, res) => {
     // Delete associated files
     if (story.storyFile?.fileUrl) {
       try {
-        fs.unlinkSync(story.storyFile.fileUrl);
+        const uploadsDir = path.join(__dirname, '../uploads');
+        const filePath = path.join(uploadsDir, story.storyFile.fileUrl.replace(/^\/+/g, ''));
+        fs.unlinkSync(filePath);
       } catch (err) {
         console.error('Error deleting story file:', err);
       }
     }
     if (story.storyImage?.imageUrl) {
       try {
-        fs.unlinkSync(story.storyImage.imageUrl);
+        const uploadsDir = path.join(__dirname, '../uploads');
+        const filePath = path.join(uploadsDir, story.storyImage.imageUrl.replace(/^\/+/g, ''));
+        fs.unlinkSync(filePath);
       } catch (err) {
         console.error('Error deleting story image:', err);
       }
@@ -207,4 +211,4 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const pdfParse = require('pdf-parse');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const mammoth = require('mammoth');
 
 // POST /api/extract-text
@@ -24,8 +24,17 @@ router.post('/', async (req, res) => {
     }
     if (fileType === 'application/pdf') {
       const dataBuffer = fs.readFileSync(filePath);
-      const data = await pdfParse(dataBuffer);
-      return res.json({ text: data.text });
+      // Use pdfjs-dist to extract text from PDF
+      const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
+      const pdfDocument = await loadingTask.promise;
+      let fullText = '';
+      for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+        const page = await pdfDocument.getPage(pageNum);
+        const content = await page.getTextContent();
+        const pageText = content.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n';
+      }
+      return res.json({ text: fullText });
     } else if (
       fileType === 'application/msword' ||
       fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
