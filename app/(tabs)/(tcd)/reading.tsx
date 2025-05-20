@@ -1,16 +1,35 @@
-import { StyleSheet, Text, View, SafeAreaView, ActivityIndicator } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, SafeAreaView, ActivityIndicator, TouchableOpacity, Animated, Alert } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
 import { Picker } from '@react-native-picker/picker';
 import { api, API_URL } from '../../utils/api';
 import { ScrollView, Image } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 
-// Add types for students and stories
+// Add type declarations for Web Speech API
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
+
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  [index: number]: {
+    transcript: string;
+    confidence: number;
+  };
+}
+
+// Add types for students, stories, and bots
 interface Student {
   _id: string;
   name: string;
   surname: string;
   grade: string;
 }
+
 interface Story {
   _id: string;
   title: string;
@@ -24,6 +43,19 @@ interface Story {
     fileType?: string;
     [key: string]: any;
   };
+  language?: string;
+}
+
+interface Bot {
+  _id: string;
+  name: string;
+  type: string;
+}
+
+interface RecordingResponse {
+  success: boolean;
+  message: string;
+  recordingUrl?: string;
 }
 
 export default function ReadingScreen() {
@@ -36,6 +68,28 @@ export default function ReadingScreen() {
   const [storyText, setStoryText] = useState('');
   const [loadingStoryText, setLoadingStoryText] = useState(false);
   const [storyImage, setStoryImage] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recognition, setRecognition] = useState<any>(null);
+  const micAnimation = useRef(new Animated.Value(1)).current;
+  const [currentWordIndex, setCurrentWordIndex] = useState<number>(-1);
+  const [storyWords, setStoryWords] = useState<string[]>([]);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [tempTranscription, setTempTranscription] = useState('');
+  const [confidence, setConfidence] = useState<number>(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [highlightAnimation] = useState(new Animated.Value(0));
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [wpm, setWpm] = useState<number>(0);
+  const [accuracy, setAccuracy] = useState<number>(0);
+  const [correctWords, setCorrectWords] = useState<number>(0);
+
+  // Add new state for reading progress
+  const [readingProgress, setReadingProgress] = useState({
+    wordsRead: 0,
+    totalWords: 0,
+    startTime: 0,
+    endTime: 0
+  });
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -78,7 +132,6 @@ export default function ReadingScreen() {
       }
       setLoadingStoryText(true);
       try {
-        // Fetch only the selected story from the backend
         const res = await api.stories.getById(selectedStory);
         const story = res.story;
         if (story) {
@@ -109,10 +162,11 @@ export default function ReadingScreen() {
               } else {
                 extractPayload.fileUrl = fileName;
               }
-              const res = await api.extractText(extractPayload);
-              const extractedText = res.text || '';
+              const extractRes = await api.extractText(extractPayload);
+              const extractedText = extractRes.text || '';
               setStoryText(extractedText.trim() ? extractedText : 'No text extracted from file.');
             } catch (e: any) {
+              if (e.name === 'AbortError') return; // Ignore aborts
               console.error('ExtractText error:', e);
               setStoryText(e?.message ? `Failed to extract text: ${e.message}` : 'Failed to extract text from file.');
             }
@@ -122,7 +176,8 @@ export default function ReadingScreen() {
         } else {
           setStoryText('No story file found.');
         }
-      } catch (e) {
+      } catch (e: any) {
+        if (e.name === 'AbortError') return; // Ignore aborts
         setStoryText('Failed to load story file.');
         setStoryImage(null);
       } finally {
@@ -133,6 +188,254 @@ export default function ReadingScreen() {
       fetchStoryText();
     }
   }, [selectedStory]);
+
+  // Add microphone animation
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(micAnimation, {
+            toValue: 1.2,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(micAnimation, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      micAnimation.setValue(1);
+    }
+  }, [isRecording]);
+
+  // Optimize word highlighting animation
+  const animateWordHighlight = (index: number) => {
+    highlightAnimation.setValue(0);
+    Animated.sequence([
+      Animated.timing(highlightAnimation, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(highlightAnimation, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Enhanced metrics calculation
+  const calculateMetrics = () => {
+    if (readingProgress.startTime) {
+      const timeInMinutes = (Date.now() - readingProgress.startTime) / 60000;
+      const wordsRead = currentWordIndex + 1;
+      const calculatedWpm = Math.round(wordsRead / timeInMinutes);
+      const calculatedAccuracy = Math.round((correctWords / wordsRead) * 100);
+      
+      setWpm(calculatedWpm);
+      setAccuracy(calculatedAccuracy);
+      setReadingProgress(prev => ({
+        ...prev,
+        wordsRead
+      }));
+    }
+  };
+
+  // Modify the recognition result handler
+  const initializeRecognition = () => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const newRecognition = new SpeechRecognition();
+        newRecognition.continuous = true;
+        newRecognition.interimResults = true;
+        newRecognition.maxAlternatives = 3;
+        
+        const story = stories.find(s => s._id === selectedStory);
+        newRecognition.lang = story?.language === 'english' ? 'en-US' : 'tl-PH';
+
+        newRecognition.onresult = (event: any) => {
+          const results = Array.from(event.results);
+          const lastResult = results[results.length - 1] as SpeechRecognitionResult;
+          
+          if (lastResult.isFinal) {
+            setIsProcessing(true);
+            
+            const alternatives = Array.from(lastResult as unknown as ArrayLike<{ transcript: string; confidence: number }>).map((alt) => ({
+              transcript: alt.transcript.toLowerCase(),
+              confidence: alt.confidence
+            }));
+
+            const bestMatch = alternatives[0];
+            setTempTranscription(bestMatch.transcript);
+            setConfidence(bestMatch.confidence);
+
+            const spokenWords = bestMatch.transcript.toLowerCase().split(/\s+/).filter((word: string) => word.length > 0);
+            
+            const nextWordIndex = currentWordIndex + 1;
+            if (nextWordIndex < storyWords.length) {
+              const nextWord = storyWords[nextWordIndex].toLowerCase();
+              
+              const matchingWord = spokenWords.find(word => 
+                word === nextWord || 
+                word.replace(/[.,!?]/g, '') === nextWord.replace(/[.,!?]/g, '')
+              );
+              
+              if (matchingWord) {
+                setCurrentWordIndex(nextWordIndex);
+                setCorrectWords(prev => prev + 1);
+                animateWordHighlight(nextWordIndex);
+                calculateMetrics();
+                
+                // Scroll to keep the current word in view
+                scrollViewRef.current?.scrollTo({
+                  y: nextWordIndex * 30,
+                  animated: true
+                });
+              }
+            }
+            
+            setIsProcessing(false);
+          } else {
+            const interimTranscript = Array.from(results)
+              .map((result: any) => result[0].transcript)
+              .join(' ');
+            setTempTranscription(interimTranscript);
+          }
+        };
+
+        newRecognition.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          setIsRecording(false);
+          setTempTranscription('');
+          setConfidence(0);
+          setIsProcessing(false);
+        };
+
+        newRecognition.onend = () => {
+          setIsRecording(false);
+          setTempTranscription('');
+          setConfidence(0);
+          setIsProcessing(false);
+        };
+
+        setRecognition(newRecognition);
+        return newRecognition;
+      }
+    }
+    return null;
+  };
+
+  const handleStartRecording = async () => {
+    if (!selectedStudent || !selectedStory) {
+      Alert.alert('Error', 'Please select both a student and a story first.');
+      return;
+    }
+
+    try {
+      setIsRecording(true);
+      const startTime = Date.now();
+      setReadingProgress(prev => ({
+        ...prev,
+        startTime,
+        totalWords: storyWords.length,
+        wordsRead: 0
+      }));
+      setStartTime(startTime);
+      setCurrentWordIndex(-1); // Start at -1 so no word is highlighted initially
+      setCorrectWords(0);
+      
+      const newRecognition = initializeRecognition();
+      if (newRecognition) {
+        newRecognition.start();
+      } else {
+        throw new Error('Speech recognition not supported');
+      }
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      setIsRecording(false);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  const handleStopRecording = async () => {
+    try {
+      if (recognition) {
+        recognition.stop();
+        setRecognition(null);
+      }
+      setIsRecording(false);
+
+      const endTime = Date.now();
+      const timeInMinutes = (endTime - readingProgress.startTime) / 60000;
+      const wordsRead = currentWordIndex + 1;
+      const finalWpm = Math.round(wordsRead / timeInMinutes);
+      const finalAccuracy = Math.round((correctWords / wordsRead) * 100);
+      
+      setWpm(finalWpm);
+      setAccuracy(finalAccuracy);
+      setReadingProgress(prev => ({
+        ...prev,
+        endTime,
+        wordsRead
+      }));
+
+      if (tempTranscription) {
+        const story = stories.find(s => s._id === selectedStory);
+        const response = await api.transcriptions.create({
+          studentId: selectedStudent,
+          storyId: selectedStory,
+          transcription: tempTranscription,
+          language: story?.language || 'english',
+          wpm: finalWpm,
+          accuracy: finalAccuracy
+        });
+
+        if (response.success) {
+          Alert.alert(
+            'Reading Session Complete',
+            `Progress: ${wordsRead}/${storyWords.length} words\nWPM: ${finalWpm}\nAccuracy: ${finalAccuracy}%`,
+            [{ text: 'OK' }]
+          );
+          setTempTranscription('');
+        } else {
+          throw new Error(response.message || 'Failed to save reading session');
+        }
+      }
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      Alert.alert('Error', 'Failed to save reading session. Please try again.');
+    }
+  };
+
+  // Update story words when story text changes
+  useEffect(() => {
+    if (storyText) {
+      const words = storyText.split(/\s+/).filter(word => word.length > 0);
+      setStoryWords(words);
+      setCurrentWordIndex(-1);
+      setCorrectWords(0);
+      setWpm(0);
+      setAccuracy(0);
+    }
+  }, [storyText]);
+
+  const handleReset = () => {
+    if (recognition) {
+      recognition.stop();
+      setRecognition(null);
+    }
+    setCurrentWordIndex(-1);
+    setCorrectWords(0);
+    setWpm(0);
+    setAccuracy(0);
+    setTempTranscription('');
+    setIsRecording(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -191,14 +494,106 @@ export default function ReadingScreen() {
           {loadingStoryText ? (
             <ActivityIndicator size="large" color="#4A90E2" />
           ) : (
-            <ScrollView style={styles.textAreaScroll}>
+            <ScrollView 
+              ref={scrollViewRef}
+              style={styles.textAreaScroll}
+            >
               <View style={styles.wordWrap}>
-                {storyText.split(/\s+/).map((word, idx) => (
-                  <Text key={idx} style={styles.word}>{word}</Text>
-                ))}
+                {storyWords.map((word, idx) => {
+                  const isRecognized = idx < currentWordIndex;
+                  const isCurrent = idx === currentWordIndex;
+                  const isNext = idx === currentWordIndex + 1;
+                  
+                  const scale = isCurrent ? highlightAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 1.2]
+                  }) : 1;
+
+                  return (
+                    <Animated.Text
+                      key={idx}
+                      style={[
+                        styles.word,
+                        isRecognized && styles.recognizedWord,
+                        isCurrent && styles.currentWord,
+                        isNext && styles.nextWord,
+                        { transform: [{ scale }] }
+                      ]}
+                    >
+                      {word}{' '}
+                    </Animated.Text>
+                  );
+                })}
               </View>
             </ScrollView>
           )}
+        </View>
+
+        {/* Temporary Transcription Display */}
+        {isRecording && (
+          <View style={styles.tempTranscriptionContainer}>
+            <Text style={styles.tempTranscriptionLabel}>
+              Listening: {isProcessing ? '(Processing...)' : ''}
+            </Text>
+            <Text style={styles.tempTranscriptionText}>{tempTranscription}</Text>
+            {confidence > 0 && (
+              <Text style={styles.confidenceText}>
+                Confidence: {Math.round(confidence * 100)}%
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Enhanced Control Section */}
+        <View style={styles.controlSection}>
+          <View style={styles.metricsContainer}>
+            {isRecording && (
+              <>
+                <View style={styles.metricBox}>
+                  <Text style={styles.metricLabel}>Progress</Text>
+                  <Text style={styles.metricValue}>
+                    {Math.max(0, currentWordIndex + 1)}/{storyWords.length}
+                  </Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={styles.metricLabel}>WPM</Text>
+                  <Text style={styles.metricValue}>
+                    {wpm > 0 ? wpm : '0'}
+                  </Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={styles.metricLabel}>Accuracy</Text>
+                  <Text style={styles.metricValue}>
+                    {accuracy > 0 ? `${accuracy}%` : '0%'}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+          
+          <View style={styles.controlButtons}>
+            <TouchableOpacity
+              style={[styles.controlButton, styles.resetButton]}
+              onPress={handleReset}
+              disabled={!selectedStudent || !selectedStory}
+            >
+              <Ionicons name="refresh" size={24} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.controlButton, styles.micButton]}
+              onPress={isRecording ? handleStopRecording : handleStartRecording}
+              disabled={!selectedStudent || !selectedStory}
+            >
+              <Animated.View style={{ transform: [{ scale: micAnimation }] }}>
+                <Ionicons
+                  name={isRecording ? 'stop' : 'mic'}
+                  size={32}
+                  color={isRecording ? '#ff4444' : '#fff'}
+                />
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -293,13 +688,215 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   word: {
-    fontSize: 16,
+    fontSize: 18,
     marginRight: 8,
     marginBottom: 8,
     backgroundColor: '#e6eef8',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     color: '#2a3a4d',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  recordingContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  recordButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F0F7FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  recordingActive: {
+    backgroundColor: '#ffe6e6',
+  },
+  micContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingText: {
+    marginTop: 8,
+    fontSize: 16,
+    color: '#4A90E2',
+    fontWeight: '600',
+  },
+  recordButtonDisabled: {
+    backgroundColor: '#f0f0f0',
+    opacity: 0.7,
+  },
+  recordingTextDisabled: {
+    color: '#999999',
+  },
+  recognizedWord: {
+    backgroundColor: '#4CAF50',
+    color: '#fff',
+    fontWeight: '500',
+    shadowColor: '#2E7D32',
+    shadowOpacity: 0.2,
+  },
+  currentWord: {
+    backgroundColor: '#FFA726',
+    color: '#fff',
+    fontWeight: '600',
+    shadowColor: '#E65100',
+    shadowOpacity: 0.3,
+  },
+  nextWord: {
+    backgroundColor: '#E3F2FD',
+    borderColor: '#2196F3',
+    borderWidth: 2,
+    color: '#1976D2',
+    fontWeight: '500',
+    shadowColor: '#1976D2',
+    shadowOpacity: 0.2,
+  },
+  accuracyText: {
+    marginTop: 8,
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  transcriptionContainer: {
+    backgroundColor: '#f5f5f5',
+    padding: 15,
+    borderRadius: 10,
+    marginVertical: 10,
+    maxHeight: 200,
+  },
+  transcriptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  micButtonDisabled: {
+    opacity: 0.5,
+  },
+  micButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#4A90E2',
+  },
+  controlSection: {
+    width: '100%',
+    marginTop: 20,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  metricsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 15,
+  },
+  metricBox: {
+    alignItems: 'center',
+    backgroundColor: '#F0F7FF',
+    padding: 10,
+    borderRadius: 12,
+    minWidth: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  metricLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  metricValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#4A90E2',
+  },
+  controlButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+  },
+  controlButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  resetButton: {
+    backgroundColor: '#FF6B6B',
+  },
+  tempTranscriptionContainer: {
+    backgroundColor: '#f5f5f5',
+    padding: 15,
+    borderRadius: 10,
+    marginVertical: 10,
+    width: '100%',
+    minHeight: 60,
+  },
+  tempTranscriptionLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  tempTranscriptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  confidenceText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  progressContainer: {
+    backgroundColor: '#fff',
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  progressText: {
+    fontSize: 16,
+    color: '#2a3a4d',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  metricsText: {
+    fontSize: 14,
+    color: '#4A90E2',
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 5,
   },
 });

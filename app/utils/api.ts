@@ -35,6 +35,15 @@ export const getHeaders = async () => {
   };
 };
 
+export interface CreateTranscriptionRequest {
+  studentId: string;
+  storyId: string;
+  transcription: string;
+  language: string;
+  wpm?: number;
+  accuracy?: number;
+}
+
 // API Methods
 export const api = {
   // Auth endpoints
@@ -201,29 +210,70 @@ export const api = {
       return handleResponse(response);
     },
 
-    getById: async (id: string) => {
+    getById: async (id: string, signal?: AbortSignal) => {
       const response = await fetch(`${API_URL}/stories/${id}`, {
         headers: await getHeaders(),
+        signal,
       });
       return handleResponse(response);
     },
   },
 
   // Text extraction endpoint
-  extractText: async ({ fileUrl, fileType, gridFsId }: { fileUrl?: string; fileType: string; gridFsId?: string }) => {
+  extractText: async (
+    { fileUrl, fileType, gridFsId }: { fileUrl?: string; fileType: string; gridFsId?: string },
+    signal?: AbortSignal
+  ) => {
     const response = await fetch(`${API_URL}/extract-text`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ fileUrl, fileType, gridFsId }),
+      signal,
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || 'Failed to extract text');
     }
     return response.json();
-  }
+  },
+
+  // Bot endpoints
+  bots: {
+    getAll: async () => {
+      const response = await fetch(`${API_URL}/bots`, {
+        headers: await getHeaders(),
+      });
+      return handleResponse(response);
+    },
+  },
+
+  // Transcription endpoints
+  transcriptions: {
+    create: async (data: CreateTranscriptionRequest) => {
+      const response = await fetch(`${API_URL}/transcriptions`, {
+        method: 'POST',
+        headers: await getHeaders(),
+        body: JSON.stringify(data)
+      });
+      return handleResponse(response);
+    },
+
+    getByStudent: async (studentId: string) => {
+      const response = await fetch(`${API_URL}/transcriptions/student/${studentId}`, {
+        headers: await getHeaders()
+      });
+      return handleResponse(response);
+    },
+
+    getByStory: async (storyId: string) => {
+      const response = await fetch(`${API_URL}/transcriptions/story/${storyId}`, {
+        headers: await getHeaders()
+      });
+      return handleResponse(response);
+    }
+  },
 };
 
 // Auth state management
