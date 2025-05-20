@@ -27,9 +27,14 @@ router.post('/', async (req, res) => {
         return res.status(500).json({ message: 'Failed to download PDF from GridFS', error: err.message });
       });
       downloadStream.on('end', async () => {
-        const buffer = Buffer.concat(chunks);
-        const data = await pdfParse(buffer);
-        return res.json({ text: data.text });
+        try {
+          const buffer = Buffer.concat(chunks);
+          const data = await pdfParse(buffer);
+          return res.json({ text: data.text });
+        } catch (error) {
+          console.error('Error extracting text from GridFS PDF:', error);
+          return res.status(500).json({ message: 'Failed to extract text from PDF in GridFS', error: error.message });
+        }
       });
       return;
     }
@@ -43,20 +48,35 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ message: 'File not found', filePath });
     }
     if (fileType === 'application/pdf') {
-      const dataBuffer = fs.readFileSync(filePath);
-      // Use pdf-parse to extract text from PDF
-      const data = await pdfParse(dataBuffer);
-      return res.json({ text: data.text });
+      try {
+        const dataBuffer = fs.readFileSync(filePath);
+        // Use pdf-parse to extract text from PDF
+        const data = await pdfParse(dataBuffer);
+        return res.json({ text: data.text });
+      } catch (error) {
+        console.error('Error extracting text from PDF file:', error);
+        return res.status(500).json({ message: 'Failed to extract text from PDF file', error: error.message });
+      }
     } else if (
       fileType === 'application/msword' ||
       fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) {
-      const data = await mammoth.extractRawText({ path: filePath });
-      return res.json({ text: data.value });
+      try {
+        const data = await mammoth.extractRawText({ path: filePath });
+        return res.json({ text: data.value });
+      } catch (error) {
+        console.error('Error extracting text from Word file:', error);
+        return res.status(500).json({ message: 'Failed to extract text from Word file', error: error.message });
+      }
     } else {
-      // Assume plain text
-      const text = fs.readFileSync(filePath, 'utf8');
-      return res.json({ text });
+      try {
+        // Assume plain text
+        const text = fs.readFileSync(filePath, 'utf8');
+        return res.json({ text });
+      } catch (error) {
+        console.error('Error reading plain text file:', error);
+        return res.status(500).json({ message: 'Failed to read plain text file', error: error.message });
+      }
     }
   } catch (error) {
     console.error('Error extracting text:', error, '| fileUrl:', req.body.fileUrl, '| filePath:', filePath);
