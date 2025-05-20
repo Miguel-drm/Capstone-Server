@@ -125,6 +125,11 @@ router.post('/upload', upload.fields([
     };
 
     if (storyFile) {
+      // Check if GridFS is initialized
+      if (!gridfsBucket) {
+        console.error('GridFSBucket is not initialized');
+        return res.status(500).json({ message: 'GridFS is not ready. Please try again later.' });
+      }
       // Save PDF to GridFS
       const fileStream = fs.createReadStream(storyFile.path);
       const uploadStream = gridfsBucket.openUploadStream(storyFile.originalname, {
