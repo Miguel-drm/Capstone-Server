@@ -66,7 +66,7 @@ const upload = multer({
 
 // GridFS setup
 let gfs, gridfsBucket;
-const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/capstone';
+const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/capstone';
 mongoose.connection.on('connected', () => {
   gridfsBucket = new GridFSBucket(mongoose.connection.db, { bucketName: 'storyFiles' });
   gfs = gridfsStream(mongoose.connection.db, mongoose.mongo);
@@ -89,29 +89,17 @@ router.post('/upload', upload.fields([
     const storyFile = req.files['storyFile']?.[0];
     const storyImage = req.files['storyImage']?.[0];
 
-    console.log('Processed files:', {
-      storyFile: storyFile ? {
-        originalname: storyFile.originalname,
-        mimetype: storyFile.mimetype,
-        size: storyFile.size,
-        path: storyFile.path
-      } : null,
-      storyImage: storyImage ? {
-        originalname: storyImage.originalname,
-        mimetype: storyImage.mimetype,
-        size: storyImage.size,
-        path: storyImage.path
-      } : null
-    });
-
     if (!title) {
       return res.status(400).json({ message: 'Title is required' });
+    }
+
+    if (!storyFile) {
+      return res.status(400).json({ message: 'Story file is required' });
     }
 
     // Create relative paths for storage in database
     const getRelativePath = (filePath) => {
       try {
-        // Normalize path separators and get the path after 'uploads/'
         const normalizedPath = filePath.replace(/\\/g, '/');
         const parts = normalizedPath.split('uploads/');
         if (parts.length !== 2) {
@@ -124,25 +112,27 @@ router.post('/upload', upload.fields([
       }
     };
 
-    if (storyFile) {
-      // Check if GridFS is initialized
-      if (!gridfsBucket) {
-        console.error('GridFSBucket is not initialized');
-        return res.status(500).json({ message: 'GridFS is not ready. Please try again later.' });
-      }
-      // Save PDF to GridFS
-      const fileStream = fs.createReadStream(storyFile.path);
-      const uploadStream = gridfsBucket.openUploadStream(storyFile.originalname, {
-        contentType: storyFile.mimetype,
-        metadata: { title, language }
-      });
-      fileStream.pipe(uploadStream)
-        .on('error', (err) => {
-          console.error('GridFS upload error:', err);
-          return res.status(500).json({ message: 'Failed to upload PDF to GridFS', error: err.message });
-        })
-        .on('finish', async (file) => {
-          // Save story metadata with GridFS file id
+    // Check if GridFS is initialized
+    if (!gridfsBucket) {
+      console.error('GridFSBucket is not initialized');
+      return res.status(500).json({ message: 'GridFS is not ready. Please try again later.' });
+    }
+
+    // Save PDF to GridFS
+    const fileStream = fs.createReadStream(storyFile.path);
+    const uploadStream = gridfsBucket.openUploadStream(storyFile.originalname, {
+      contentType: storyFile.mimetype,
+      metadata: { title, language }
+    });
+
+    fileStream.pipe(uploadStream)
+      .on('error', (err) => {
+        console.error('GridFS upload error:', err);
+        return res.status(500).json({ message: 'Failed to upload PDF to GridFS', error: err.message });
+      })
+      .on('finish', async (file) => {
+        try {
+          // Create story document with GridFS file id
           const story = new Stories({
             title,
             language: language || 'english',
@@ -159,37 +149,32 @@ router.post('/upload', upload.fields([
               imageSize: storyImage.size
             } : null
           });
-          await story.save();
-          // Optionally delete file from disk
-          fs.unlinkSync(storyFile.path);
-          res.status(201).json({ message: 'Story uploaded successfully', story });
-        });
-      return;
-    } else {
-      const story = new Stories({
-        title,
-        language: language || 'english',
-        storyFile: storyFile ? {
-          fileName: storyFile.originalname,
-          fileUrl: getRelativePath(storyFile.path),
-          fileType: storyFile.mimetype,
-          fileSize: storyFile.size
-        } : null,
-        storyImage: storyImage ? {
-          fileName: storyImage.originalname,
-          imageUrl: getRelativePath(storyImage.path),
-          imageType: storyImage.mimetype,
-          imageSize: storyImage.size
-        } : null
-      });
 
-      await story.save();
-      console.log('Story saved successfully:', story);
-      res.status(201).json({ message: 'Story uploaded successfully', story });
-    }
+          // Save to database
+          await story.save();
+          console.log('Story saved successfully:', story);
+
+          // Clean up the temporary file
+          fs.unlinkSync(storyFile.path);
+
+          res.status(201).json({ 
+            message: 'Story uploaded successfully', 
+            story 
+          });
+        } catch (error) {
+          console.error('Error saving story:', error);
+          res.status(500).json({ 
+            message: 'Error saving story', 
+            error: error.message 
+          });
+        }
+      });
   } catch (error) {
     console.error('Error uploading story:', error);
-    res.status(500).json({ message: 'Error uploading story', error: error.message });
+    res.status(500).json({ 
+      message: 'Error uploading story', 
+      error: error.message 
+    });
   }
 });
 

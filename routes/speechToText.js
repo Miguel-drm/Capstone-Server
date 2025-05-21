@@ -1,60 +1,57 @@
 const express = require('express');
 const router = express.Router();
-const { Cheetah } = require('@picovoice/cheetah-node');
+const vosk = require('vosk');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 
-// Initialize Cheetah
-let cheetah = null;
-let isInitialized = false;
+// Initialize Vosk models
+const models = {
+  en: null,
+  tl: null
+};
 
-async function initializeCheetah() {
-  if (isInitialized) return;
+// Model paths
+const MODEL_PATHS = {
+  en: path.join(__dirname, '../models/vosk-model-small-en-us'),
+  tl: path.join(__dirname, '../models/vosk-model-small-tl')
+};
 
-  try {
-    const accessKey = process.env.PICOVOICE_ACCESS_KEY;
-    if (!accessKey) {
-      throw new Error('PICOVOICE_ACCESS_KEY environment variable is not set');
-    }
-
-    cheetah = new Cheetah(accessKey, {
-      modelPath: path.join(__dirname, '../models/cheetah_model.pv'),
-      libraryPath: path.join(__dirname, '../lib/cheetah_node.dll'),
-    });
-
-    isInitialized = true;
-    console.log('Cheetah initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize Cheetah:', error);
-    throw error;
+// Initialize models
+try {
+  if (fs.existsSync(MODEL_PATHS.en)) {
+    models.en = new vosk.Model(MODEL_PATHS.en);
+    console.log('English model loaded successfully');
+  } else {
+    console.error('English model not found at:', MODEL_PATHS.en);
   }
+
+  if (fs.existsSync(MODEL_PATHS.tl)) {
+    models.tl = new vosk.Model(MODEL_PATHS.tl);
+    console.log('Tagalog model loaded successfully');
+  } else {
+    console.error('Tagalog model not found at:', MODEL_PATHS.tl);
+  }
+} catch (error) {
+  console.error('Error initializing Vosk models:', error);
 }
 
 // Test endpoint
-router.get('/test', async (req, res) => {
-  try {
-    if (!isInitialized) {
-      await initializeCheetah();
-    }
-    res.json({
-      success: true,
-      message: 'Cheetah is available'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: `Failed to initialize Cheetah: ${error.message}`
-    });
-  }
+router.get('/test', (req, res) => {
+  const availableModels = Object.entries(models)
+    .filter(([_, model]) => model !== null)
+    .map(([lang]) => lang);
+  
+  res.json({
+    success: true,
+    message: 'Vosk is available',
+    availableModels
+  });
 });
 
-// Convert speech to text
+// Speech to text endpoint
 router.post('/', async (req, res) => {
   try {
-    if (!isInitialized) {
-      await initializeCheetah();
-    }
-
     if (!req.files || !req.files.audio) {
       return res.status(400).json({
         success: false,
@@ -62,69 +59,68 @@ router.post('/', async (req, res) => {
       });
     }
 
+    const language = req.body.language || 'en';
+    const model = models[language];
+
+    if (!model) {
+      return res.status(400).json({
+        success: false,
+        error: `Language model not available for: ${language}`
+      });
+    }
+
     const audioFile = req.files.audio;
-    const audioData = fs.readFileSync(audioFile.path);
+    const audioData = await fs.promises.readFile(audioFile.tempFilePath);
     
-    // Process audio with Cheetah
-    const transcript = await cheetah.process(audioData);
+    // Create a readable stream from the audio data
+    const audioStream = new Readable();
+    audioStream.push(audioData);
+    audioStream.push(null);
+
+    // Create a recognizer
+    const recognizer = new vosk.Recognizer({ model: model, sampleRate: 16000 });
     
-    // Clean up temporary file
-    fs.unlinkSync(audioFile.path);
+    // Process the audio stream
+    let text = '';
+    for await (const chunk of audioStream) {
+      if (recognizer.AcceptWaveform(chunk)) {
+        const result = JSON.parse(recognizer.Result());
+        text += result.text + ' ';
+      }
+    }
+
+    // Get final result
+    const finalResult = JSON.parse(recognizer.FinalResult());
+    text += finalResult.text;
+
+    // Clean up
+    recognizer.Free();
+    await fs.promises.unlink(audioFile.tempFilePath);
 
     res.json({
       success: true,
-      text: transcript,
-      error: null
+      text: text.trim()
     });
+
   } catch (error) {
+    console.error('Error processing speech:', error);
     res.status(500).json({
       success: false,
-      error: `Error processing audio: ${error.message}`
-    });
-  }
-});
-
-// Stream audio and convert to text
-router.post('/stream', async (req, res) => {
-  try {
-    if (!isInitialized) {
-      await initializeCheetah();
-    }
-
-    const chunks = [];
-    req.on('data', chunk => chunks.push(chunk));
-    
-    req.on('end', async () => {
-      try {
-        const audioData = Buffer.concat(chunks);
-        const transcript = await cheetah.process(audioData);
-        
-        res.json({
-          success: true,
-          text: transcript,
-          error: null
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: `Error processing audio stream: ${error.message}`
-        });
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: `Error handling audio stream: ${error.message}`
+      error: 'Failed to process speech'
     });
   }
 });
 
 // Cleanup on server shutdown
 process.on('SIGINT', () => {
-  if (cheetah) {
-    cheetah.release();
-  }
+  Object.values(models).forEach(model => {
+    if (model) {
+      model.Free();
+    }
+  });
   process.exit();
 });
+
+module.exports = router; 
 
 module.exports = router; 
