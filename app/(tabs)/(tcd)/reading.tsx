@@ -58,6 +58,17 @@ interface RecordingResponse {
   recordingUrl?: string;
 }
 
+// Update type definitions
+interface WordOccurrence {
+  indices: number[];
+  difficulty: number;
+}
+
+interface WordProgress {
+  count: number;
+  difficulty: number;
+}
+
 export default function ReadingScreen() {
   const [students, setStudents] = useState<Student[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
@@ -90,6 +101,29 @@ export default function ReadingScreen() {
     startTime: 0,
     endTime: 0
   });
+
+  // Update state definitions
+  const [wordOccurrences, setWordOccurrences] = useState<Map<string, WordOccurrence>>(new Map());
+  const [wordProgress, setWordProgress] = useState<Map<string, WordProgress>>(new Map());
+
+  // Add new state variables for enhanced features
+  const [readingMode, setReadingMode] = useState<'normal' | 'practice' | 'assessment'>('normal');
+  const [readingSpeed, setReadingSpeed] = useState<'slow' | 'normal' | 'fast'>('normal');
+  const [difficultyLevel, setDifficultyLevel] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const [showHints, setShowHints] = useState(false);
+  const [readingHistory, setReadingHistory] = useState<{
+    date: Date;
+    wpm: number;
+    accuracy: number;
+    storyId: string;
+  }[]>([]);
+
+  // Add new state for auto-scroll
+  const [lastScrollPosition, setLastScrollPosition] = useState(0);
+
+  // Add new state for interim results
+  const [interimWordIndex, setInterimWordIndex] = useState<number>(-1);
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -228,13 +262,68 @@ export default function ReadingScreen() {
     ]).start();
   };
 
+  // Update story words when story text changes
+  useEffect(() => {
+    if (storyText) {
+      const words = storyText.split(/\s+/).filter(word => word.length > 0);
+      setStoryWords(words);
+      setCurrentWordIndex(-1);
+      setCorrectWords(0);
+      setWpm(0);
+      setAccuracy(0);
+
+      // Calculate story difficulty
+      const difficulty = calculateWordDifficulty(words);
+      setDifficultyLevel(difficulty);
+
+      // Create a map of word occurrences with difficulty
+      const occurrences = new Map<string, { indices: number[], difficulty: number }>();
+      words.forEach((word, index) => {
+        const cleanWord = word.toLowerCase().replace(/[.,!?]/g, '');
+        if (!occurrences.has(cleanWord)) {
+          occurrences.set(cleanWord, {
+            indices: [],
+            difficulty: getWordDifficulty(word)
+          });
+        }
+        occurrences.get(cleanWord)?.indices.push(index);
+      });
+      setWordOccurrences(occurrences);
+
+      // Initialize word progress with difficulty tracking
+      const progress = new Map<string, { count: number, difficulty: number }>();
+      words.forEach(word => {
+        const cleanWord = word.toLowerCase().replace(/[.,!?]/g, '');
+        progress.set(cleanWord, {
+          count: 0,
+          difficulty: getWordDifficulty(word)
+        });
+      });
+      setWordProgress(progress);
+    }
+  }, [storyText]);
+
   // Enhanced metrics calculation
   const calculateMetrics = () => {
     if (readingProgress.startTime) {
       const timeInMinutes = (Date.now() - readingProgress.startTime) / 60000;
       const wordsRead = currentWordIndex + 1;
-      const calculatedWpm = Math.round(wordsRead / timeInMinutes);
-      const calculatedAccuracy = Math.round((correctWords / wordsRead) * 100);
+      
+      // Calculate WPM with difficulty adjustment
+      const difficultyMultiplier = {
+        easy: 1.2,
+        medium: 1.0,
+        hard: 0.8
+      }[difficultyLevel];
+      
+      const calculatedWpm = Math.round((wordsRead / timeInMinutes) * (correctWords / wordsRead) * difficultyMultiplier);
+      
+      // Calculate accuracy considering word difficulty
+      const totalExpectedWords = Array.from(wordProgress.values()).reduce((sum, { count, difficulty }) => 
+        sum + (count * difficulty), 0);
+      const totalCorrectWords = Array.from(wordProgress.values()).reduce((sum, { count, difficulty }) => 
+        sum + (count * difficulty), 0);
+      const calculatedAccuracy = Math.round((totalCorrectWords / totalExpectedWords) * 100);
       
       setWpm(calculatedWpm);
       setAccuracy(calculatedAccuracy);
@@ -242,10 +331,44 @@ export default function ReadingScreen() {
         ...prev,
         wordsRead
       }));
+
+      // Update reading history
+      setReadingHistory(prev => [...prev, {
+        date: new Date(),
+        wpm: calculatedWpm,
+        accuracy: calculatedAccuracy,
+        storyId: selectedStory
+      }]);
     }
   };
 
-  // Modify the recognition result handler
+  // Update the word style function to include interim highlighting
+  const getWordStyle = (word: string, index: number) => {
+    const isRecognized = index < currentWordIndex;
+    const isCurrent = index === currentWordIndex;
+    const isInterim = index === interimWordIndex;
+    const isNext = index === currentWordIndex + 1;
+    const difficulty = getWordDifficulty(word);
+    
+    const baseStyle = [
+      styles.word,
+      isRecognized && styles.recognizedWord,
+      isCurrent && styles.currentWord,
+      isInterim && styles.interimWord,
+      isNext && styles.nextWord
+    ];
+
+    // Add difficulty-based styling
+    if (difficulty > 7) {
+      baseStyle.push(styles.difficultWord as any);
+    } else if (difficulty > 4) {
+      baseStyle.push(styles.mediumWord as any);
+    }
+
+    return baseStyle;
+  };
+
+  // Update the recognition result handler for better real-time response
   const initializeRecognition = () => {
     if (typeof window !== 'undefined') {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -262,7 +385,27 @@ export default function ReadingScreen() {
           const results = Array.from(event.results);
           const lastResult = results[results.length - 1] as SpeechRecognitionResult;
           
-          if (lastResult.isFinal) {
+          // Process interim results for real-time feedback
+          if (!lastResult.isFinal) {
+            const interimTranscript = Array.from(results)
+              .map((result: any) => result[0].transcript)
+              .join(' ');
+            setTempTranscription(interimTranscript);
+
+            // Try to match interim words
+            const interimWords = interimTranscript.toLowerCase().split(/\s+/).filter((word: string) => word.length > 0);
+            if (interimWords.length > 0) {
+              const lastInterimWord = interimWords[interimWords.length - 1].replace(/[.,!?]/g, '');
+              const wordOccurrence = wordOccurrences.get(lastInterimWord);
+              
+              if (wordOccurrence) {
+                const nextOccurrence = wordOccurrence.indices.find((index: number) => index > currentWordIndex);
+                if (nextOccurrence !== undefined) {
+                  setInterimWordIndex(nextOccurrence);
+                }
+              }
+            }
+          } else {
             setIsProcessing(true);
             
             const alternatives = Array.from(lastResult as unknown as ArrayLike<{ transcript: string; confidence: number }>).map((alt) => ({
@@ -276,35 +419,55 @@ export default function ReadingScreen() {
 
             const spokenWords = bestMatch.transcript.toLowerCase().split(/\s+/).filter((word: string) => word.length > 0);
             
-            const nextWordIndex = currentWordIndex + 1;
-            if (nextWordIndex < storyWords.length) {
-              const nextWord = storyWords[nextWordIndex].toLowerCase();
+            // Process each spoken word
+            spokenWords.forEach(spokenWord => {
+              const cleanSpokenWord = spokenWord.replace(/[.,!?]/g, '');
               
-              const matchingWord = spokenWords.find(word => 
-                word === nextWord || 
-                word.replace(/[.,!?]/g, '') === nextWord.replace(/[.,!?]/g, '')
-              );
-              
-              if (matchingWord) {
-                setCurrentWordIndex(nextWordIndex);
-                setCorrectWords(prev => prev + 1);
-                animateWordHighlight(nextWordIndex);
-                calculateMetrics();
+              // Find all occurrences of this word in the story
+              const wordOccurrence = wordOccurrences.get(cleanSpokenWord);
+              if (wordOccurrence) {
+                // Find the next unread occurrence
+                const nextOccurrence = wordOccurrence.indices.find((index: number) => index > currentWordIndex);
                 
-                // Scroll to keep the current word in view
-                scrollViewRef.current?.scrollTo({
-                  y: nextWordIndex * 30,
-                  animated: true
-                });
+                if (nextOccurrence !== undefined) {
+                  // Update word progress
+                  setWordProgress(prev => {
+                    const newProgress = new Map(prev);
+                    const currentProgress = newProgress.get(cleanSpokenWord);
+                    if (currentProgress) {
+                      newProgress.set(cleanSpokenWord, {
+                        ...currentProgress,
+                        count: currentProgress.count + 1
+                      });
+                    }
+                    return newProgress;
+                  });
+                  
+                  setCurrentWordIndex(nextOccurrence);
+                  setInterimWordIndex(-1); // Reset interim index
+                  setCorrectWords(prev => prev + 1);
+                  animateWordHighlight(nextOccurrence);
+                  calculateMetrics();
+                  
+                  // Enhanced auto-scroll functionality
+                  if (autoScrollEnabled) {
+                    const wordHeight = 30;
+                    const scrollPosition = nextOccurrence * wordHeight;
+                    const currentScrollPosition = lastScrollPosition;
+                    
+                    if (Math.abs(scrollPosition - currentScrollPosition) > wordHeight / 2) {
+                      setLastScrollPosition(scrollPosition);
+                      scrollViewRef.current?.scrollTo({
+                        y: scrollPosition,
+                        animated: true
+                      });
+                    }
+                  }
+                }
               }
-            }
+            });
             
             setIsProcessing(false);
-          } else {
-            const interimTranscript = Array.from(results)
-              .map((result: any) => result[0].transcript)
-              .join(' ');
-            setTempTranscription(interimTranscript);
           }
         };
 
@@ -412,18 +575,6 @@ export default function ReadingScreen() {
     }
   };
 
-  // Update story words when story text changes
-  useEffect(() => {
-    if (storyText) {
-      const words = storyText.split(/\s+/).filter(word => word.length > 0);
-      setStoryWords(words);
-      setCurrentWordIndex(-1);
-      setCorrectWords(0);
-      setWpm(0);
-      setAccuracy(0);
-    }
-  }, [storyText]);
-
   const handleReset = () => {
     if (recognition) {
       recognition.stop();
@@ -437,115 +588,226 @@ export default function ReadingScreen() {
     setIsRecording(false);
   };
 
+  // Add new helper functions
+  const getWordDifficulty = (word: string): number => {
+    const length = word.length;
+    const hasSpecialChars = /[^a-zA-Z0-9\s]/.test(word);
+    const isUpperCase = word === word.toUpperCase();
+    return length + (hasSpecialChars ? 2 : 0) + (isUpperCase ? 1 : 0);
+  };
+
+  const calculateWordDifficulty = (words: string[]): 'easy' | 'medium' | 'hard' => {
+    const avgDifficulty = words.reduce((sum, word) => sum + getWordDifficulty(word), 0) / words.length;
+    if (avgDifficulty < 5) return 'easy';
+    if (avgDifficulty < 8) return 'medium';
+    return 'hard';
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Reading Section</Text>
-        <Text style={styles.subtitle}>Select a student and a story to begin</Text>
-        {/* Student Dropdown */}
-        <View style={styles.dropdownContainer}>
-          <Text style={styles.dropdownLabel}>Select Student:</Text>
-          {loadingStudents ? (
-            <ActivityIndicator size="small" color="#4A90E2" />
-          ) : (
-            <View style={styles.pickerWrapper}>
-              <Picker
-                selectedValue={selectedStudent}
-                onValueChange={setSelectedStudent}
-                style={styles.picker}
-              >
-                <Picker.Item label="-- Select Student --" value="" />
-                {students.map((s) => (
-                  <Picker.Item key={s._id} label={`${s.name} ${s.surname}`} value={s._id} />
-                ))}
-              </Picker>
-            </View>
-          )}
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+      >
+        {/* Header Section */}
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Reading Section</Text>
+          <Text style={styles.subtitle}>Select a student and a story to begin</Text>
         </View>
-        {/* Story Dropdown */}
-        <View style={styles.dropdownContainer}>
-          <Text style={styles.dropdownLabel}>Select Story:</Text>
-          {loadingStories ? (
-            <ActivityIndicator size="small" color="#4A90E2" />
-          ) : (
-            <View style={styles.pickerWrapper}>
-              <Picker
-                selectedValue={selectedStory}
-                onValueChange={setSelectedStory}
-                style={styles.picker}
+
+        {/* Controls Section */}
+        <View style={styles.controlsSection}>
+          {/* Reading Mode Selector */}
+          <View style={styles.modeSelector}>
+            {['normal', 'practice', 'assessment'].map((mode) => (
+              <TouchableOpacity
+                key={mode}
+                style={[
+                  styles.modeButton,
+                  readingMode === mode && styles.modeButtonActive
+                ]}
+                onPress={() => setReadingMode(mode as any)}
               >
-                <Picker.Item label="-- Select Story --" value="" />
-                {stories.map((story) => (
-                  <Picker.Item key={story._id} label={story.title} value={story._id} />
-                ))}
-              </Picker>
-            </View>
-          )}
-        </View>
-        {/* Story Image */}
-        {storyImage && (
-          <View style={styles.imageContainer}>
-            <Image source={{ uri: storyImage }} style={styles.storyImage} resizeMode="contain" />
+                <Text style={[
+                  styles.modeButtonText,
+                  readingMode === mode && styles.modeButtonTextActive
+                ]}>
+                  {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        )}
-        {/* Story Text Field */}
-        <View style={styles.textAreaCard}>
-          <Text style={styles.dropdownLabel}>Story Text:</Text>
-          {loadingStoryText ? (
-            <ActivityIndicator size="large" color="#4A90E2" />
-          ) : (
-            <ScrollView 
-              ref={scrollViewRef}
-              style={styles.textAreaScroll}
-            >
-              <View style={styles.wordWrap}>
-                {storyWords.map((word, idx) => {
-                  const isRecognized = idx < currentWordIndex;
-                  const isCurrent = idx === currentWordIndex;
-                  const isNext = idx === currentWordIndex + 1;
-                  
-                  const scale = isCurrent ? highlightAnimation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [1, 1.2]
-                  }) : 1;
 
-                  return (
-                    <Animated.Text
-                      key={idx}
-                      style={[
-                        styles.word,
-                        isRecognized && styles.recognizedWord,
-                        isCurrent && styles.currentWord,
-                        isNext && styles.nextWord,
-                        { transform: [{ scale }] }
-                      ]}
-                    >
-                      {word}{' '}
-                    </Animated.Text>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          )}
+          {/* Settings */}
+          <View style={styles.settingsContainer}>
+            <TouchableOpacity
+              style={styles.settingButton}
+              onPress={() => setAutoScrollEnabled(!autoScrollEnabled)}
+            >
+              <Ionicons
+                name={autoScrollEnabled ? 'eye' : 'eye-off'}
+                size={20}
+                color="#666"
+              />
+              <Text style={styles.settingButtonText}>
+                {autoScrollEnabled ? 'Auto-scroll On' : 'Auto-scroll Off'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.settingButton}
+              onPress={() => setShowHints(!showHints)}
+            >
+              <Ionicons
+                name={showHints ? 'bulb' : 'bulb-outline'}
+                size={20}
+                color="#666"
+              />
+              <Text style={styles.settingButtonText}>
+                {showHints ? 'Hints On' : 'Hints Off'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Student and Story Dropdowns */}
+          <View style={styles.dropdownsContainer}>
+            <View style={styles.dropdownWrapper}>
+              <Text style={styles.dropdownLabel}>Student</Text>
+              {loadingStudents ? (
+                <ActivityIndicator size="small" color="#4A90E2" />
+              ) : (
+                <View style={styles.pickerWrapper}>
+                  <Picker
+                    selectedValue={selectedStudent}
+                    onValueChange={setSelectedStudent}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Select Student" value="" />
+                    {students.map((s) => (
+                      <Picker.Item key={s._id} label={`${s.name} ${s.surname}`} value={s._id} />
+                    ))}
+                  </Picker>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.dropdownWrapper}>
+              <Text style={styles.dropdownLabel}>Story</Text>
+              {loadingStories ? (
+                <ActivityIndicator size="small" color="#4A90E2" />
+              ) : (
+                <View style={styles.pickerWrapper}>
+                  <Picker
+                    selectedValue={selectedStory}
+                    onValueChange={setSelectedStory}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Select Story" value="" />
+                    {stories.map((story) => (
+                      <Picker.Item key={story._id} label={story.title} value={story._id} />
+                    ))}
+                  </Picker>
+                </View>
+              )}
+            </View>
+          </View>
         </View>
 
-        {/* Temporary Transcription Display */}
-        {isRecording && (
-          <View style={styles.tempTranscriptionContainer}>
-            <Text style={styles.tempTranscriptionLabel}>
-              Listening: {isProcessing ? '(Processing...)' : ''}
-            </Text>
-            <Text style={styles.tempTranscriptionText}>{tempTranscription}</Text>
-            {confidence > 0 && (
-              <Text style={styles.confidenceText}>
-                Confidence: {Math.round(confidence * 100)}%
-              </Text>
+        {/* Reading Section */}
+        <View style={styles.readingSection}>
+          {/* Story Image */}
+          {storyImage && (
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: storyImage }} style={styles.storyImage} resizeMode="contain" />
+            </View>
+          )}
+
+          {/* Story Text Field */}
+          <View style={styles.textAreaCard}>
+            <Text style={styles.dropdownLabel}>Story Text:</Text>
+            {loadingStoryText ? (
+              <ActivityIndicator size="large" color="#4A90E2" />
+            ) : (
+              <>
+                <View style={styles.progressBar}>
+                  <Animated.View 
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${((currentWordIndex + 1) / storyWords.length) * 100}%`
+                      }
+                    ]} 
+                  />
+                </View>
+                
+                <ScrollView 
+                  ref={scrollViewRef}
+                  style={styles.textAreaScroll}
+                  contentContainerStyle={{ paddingBottom: 20 }}
+                  showsVerticalScrollIndicator={true}
+                  bounces={false}
+                  scrollEventThrottle={16}
+                  onScroll={({ nativeEvent }) => {
+                    if (autoScrollEnabled) {
+                      setLastScrollPosition(nativeEvent.contentOffset.y);
+                    }
+                  }}
+                >
+                  <View style={styles.wordWrap}>
+                    {storyWords.map((word, idx) => {
+                      const scale = idx === currentWordIndex ? highlightAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.2]
+                      }) : 1;
+
+                      return (
+                        <Animated.Text
+                          key={idx}
+                          style={[
+                            ...getWordStyle(word, idx),
+                            { transform: [{ scale }] }
+                          ]}
+                        >
+                          {word}{' '}
+                        </Animated.Text>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                {/* Word Hints */}
+                {showHints && currentWordIndex >= 0 && (
+                  <View style={styles.hintContainer}>
+                    <Text style={styles.hintText}>
+                      Difficulty: {getWordDifficulty(storyWords[currentWordIndex]) > 7 ? 'Hard' : 
+                        getWordDifficulty(storyWords[currentWordIndex]) > 4 ? 'Medium' : 'Easy'}
+                    </Text>
+                  </View>
+                )}
+              </>
             )}
           </View>
-        )}
 
-        {/* Enhanced Control Section */}
-        <View style={styles.controlSection}>
+          {/* Temporary Transcription Display */}
+          {isRecording && (
+            <View style={styles.tempTranscriptionContainer}>
+              <Text style={styles.tempTranscriptionLabel}>
+                Listening: {isProcessing ? '(Processing...)' : ''}
+              </Text>
+              <Text style={styles.tempTranscriptionText}>{tempTranscription}</Text>
+              {confidence > 0 && (
+                <Text style={styles.confidenceText}>
+                  Confidence: {Math.round(confidence * 100)}%
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Footer Section with Controls */}
+        <View style={styles.footerSection}>
           <View style={styles.metricsContainer}>
             {isRecording && (
               <>
@@ -595,7 +857,7 @@ export default function ReadingScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -608,9 +870,56 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    paddingBottom: 0,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+  },
+  headerSection: {
+    marginBottom: 15,
+  },
+  controlsSection: {
+    marginBottom: 15,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  readingSection: {
+    flex: 1,
+    marginBottom: 15,
+    minHeight: 500,
+  },
+  footerSection: {
+    padding: 15,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    position: 'relative',
+    zIndex: 1,
+  },
+  textAreaCard: {
     width: '100%',
+    height: 400,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+    position: 'relative',
+    marginBottom: 20,
   },
   title: {
     fontSize: 26,
@@ -624,12 +933,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 18,
   },
+  dropdownsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 10,
+  },
+  dropdownWrapper: {
+    flex: 1,
+  },
   dropdownContainer: {
-    width: '100%',
-    marginVertical: 10,
+    marginBottom: 0,
   },
   dropdownLabel: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#333',
     marginBottom: 4,
     marginLeft: 4,
@@ -639,16 +956,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F7FF',
     borderRadius: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 2,
+    elevation: 1,
     marginBottom: 4,
-    width: '100%',
   },
   picker: {
     width: '100%',
-    height: 44,
+    height: 40,
     color: '#222',
   },
   imageContainer: {
@@ -662,30 +978,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#e6eef8',
   },
-  textAreaCard: {
-    width: '100%',
-    flex: 1,
-    marginTop: 10,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    elevation: 3,
-  },
   textAreaScroll: {
     flex: 1,
     backgroundColor: '#F0F7FF',
     borderRadius: 10,
     padding: 10,
     marginTop: 6,
+    maxHeight: 320,
   },
   wordWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 10,
+    paddingBottom: 20,
   },
   word: {
     fontSize: 18,
@@ -748,6 +1053,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     shadowColor: '#2E7D32',
     shadowOpacity: 0.2,
+    transform: [{ scale: 0.95 }],
   },
   currentWord: {
     backgroundColor: '#FFA726',
@@ -755,6 +1061,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     shadowColor: '#E65100',
     shadowOpacity: 0.3,
+    transform: [{ scale: 1.1 }],
   },
   nextWord: {
     backgroundColor: '#E3F2FD',
@@ -790,6 +1097,7 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     backgroundColor: '#4A90E2',
+    transform: [{ scale: 1.1 }],
   },
   controlSection: {
     width: '100%',
@@ -807,18 +1115,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginBottom: 15,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 10,
   },
   metricBox: {
     alignItems: 'center',
-    backgroundColor: '#F0F7FF',
-    padding: 10,
+    backgroundColor: '#fff',
+    padding: 12,
     borderRadius: 12,
     minWidth: 100,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   metricLabel: {
     fontSize: 14,
@@ -836,6 +1147,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 20,
+    marginTop: 15,
   },
   controlButton: {
     width: 60,
@@ -853,27 +1165,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B6B',
   },
   tempTranscriptionContainer: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F8F9FA',
     padding: 15,
-    borderRadius: 10,
+    borderRadius: 12,
     marginVertical: 10,
     width: '100%',
     minHeight: 60,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
   tempTranscriptionLabel: {
     fontSize: 14,
     color: '#666',
     marginBottom: 5,
+    fontWeight: '500',
   },
   tempTranscriptionText: {
     fontSize: 16,
     color: '#333',
+    lineHeight: 22,
   },
   confidenceText: {
     fontSize: 12,
     color: '#666',
     marginTop: 5,
     fontStyle: 'italic',
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 3,
+    marginVertical: 10,
+    overflow: 'hidden',
+    position: 'absolute',
+    top: 0,
+    left: 14,
+    right: 14,
+    zIndex: 1,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 3,
   },
   progressContainer: {
     backgroundColor: '#fff',
@@ -898,5 +1231,89 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 5,
+  },
+  difficultWord: {
+    borderColor: '#FF6B6B',
+    borderWidth: 1,
+  },
+  mediumWord: {
+    borderColor: '#FFA726',
+    borderWidth: 1,
+  },
+  modeSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 15,
+    padding: 10,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+  },
+  modeButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  modeButtonActive: {
+    backgroundColor: '#4A90E2',
+  },
+  modeButtonText: {
+    color: '#666',
+    fontWeight: '500',
+  },
+  modeButtonTextActive: {
+    color: '#fff',
+  },
+  settingsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    padding: 10,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+  },
+  settingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+  },
+  settingButtonText: {
+    marginLeft: 5,
+    color: '#666',
+  },
+  hintContainer: {
+    position: 'absolute',
+    bottom: 14,
+    left: 14,
+    right: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  hintText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  interimWord: {
+    backgroundColor: '#FFE082',
+    color: '#E65100',
+    fontWeight: '500',
+    shadowColor: '#FFA000',
+    shadowOpacity: 0.3,
+    transform: [{ scale: 1.05 }],
   },
 });
