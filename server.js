@@ -9,7 +9,7 @@ const uploadRouter = require('./routes/upload');
 const storyUploadRouter = require('./routes/story');
 const extractTextRouter = require('./routes/extractText');
 const verifyToken = require('./middleware/verifyToken');
-const transcriptionRouter = require('./routes/transcription');
+const speechToTextRouter = require('./routes/speechToText');
 
 // Load environment variables from config.env
 dotenv.config({ path: path.join(__dirname, 'config.env') });
@@ -39,7 +39,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/upload', verifyToken, uploadRouter);
 app.use('/api/stories', storyUploadRouter);
 app.use('/api/extract-text', extractTextRouter);
-app.use('/api/transcriptions', transcriptionRouter);
+app.use('/api/speech-to-text', speechToTextRouter);
 
 // Health check route
 app.get('/api/health', (req, res) => {
