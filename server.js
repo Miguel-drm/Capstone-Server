@@ -9,7 +9,6 @@ const uploadRouter = require('./routes/upload');
 const storyUploadRouter = require('./routes/story');
 const extractTextRouter = require('./routes/extractText');
 const verifyToken = require('./middleware/verifyToken');
-const speechToTextRouter = require('./routes/speechToText');
 const fileUpload = require('express-fileupload');
 
 // Load environment variables from config.env
@@ -48,7 +47,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/upload', verifyToken, uploadRouter);
 app.use('/api/stories', storyUploadRouter);
 app.use('/api/extract-text', extractTextRouter);
-app.use('/api/speech-to-text', speechToTextRouter);
 
 // Health check route
 app.get('/api/health', (req, res) => {
