@@ -125,6 +125,10 @@ export default function ReadingScreen() {
   // Add new state for interim results
   const [interimWordIndex, setInterimWordIndex] = useState<number>(-1);
 
+  // Add new animation values for smoother transitions
+  const wordScale = useRef(new Animated.Value(1)).current;
+  const wordOpacity = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
     const fetchStudents = async () => {
       setLoadingStudents(true);
@@ -245,20 +249,33 @@ export default function ReadingScreen() {
     }
   }, [isRecording]);
 
-  // Optimize word highlighting animation
+  // Update the word animation function
   const animateWordHighlight = (index: number) => {
-    highlightAnimation.setValue(0);
     Animated.sequence([
-      Animated.timing(highlightAnimation, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(highlightAnimation, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
+      Animated.parallel([
+        Animated.timing(wordScale, {
+          toValue: 1.2,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(wordOpacity, {
+          toValue: 0.8,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(wordScale, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(wordOpacity, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]),
     ]).start();
   };
 
@@ -342,19 +359,19 @@ export default function ReadingScreen() {
     }
   };
 
-  // Update the word style function to include interim highlighting
+  // Update the word style function for better visual feedback
   const getWordStyle = (word: string, index: number) => {
-    const isRecognized = index < currentWordIndex;
     const isCurrent = index === currentWordIndex;
-    const isInterim = index === interimWordIndex;
     const isNext = index === currentWordIndex + 1;
     const difficulty = getWordDifficulty(word);
     
     const baseStyle = [
       styles.word,
-      isRecognized && styles.recognizedWord,
-      isCurrent && styles.currentWord,
-      isInterim && styles.interimWord,
+      isCurrent && {
+        ...styles.currentWord,
+        transform: [{ scale: isCurrent ? wordScale : 1 }],
+        opacity: isCurrent ? wordOpacity : 1,
+      },
       isNext && styles.nextWord
     ];
 
@@ -368,7 +385,7 @@ export default function ReadingScreen() {
     return baseStyle;
   };
 
-  // Update the recognition result handler for better real-time response
+  // Update the recognition result handler to allow word repetition
   const initializeRecognition = () => {
     if (typeof window !== 'undefined') {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -399,7 +416,8 @@ export default function ReadingScreen() {
               const wordOccurrence = wordOccurrences.get(lastInterimWord);
               
               if (wordOccurrence) {
-                const nextOccurrence = wordOccurrence.indices.find((index: number) => index > currentWordIndex);
+                // Find any occurrence of the word, not just the next one
+                const nextOccurrence = wordOccurrence.indices.find((index: number) => index >= currentWordIndex);
                 if (nextOccurrence !== undefined) {
                   setInterimWordIndex(nextOccurrence);
                 }
@@ -426,32 +444,18 @@ export default function ReadingScreen() {
               // Find all occurrences of this word in the story
               const wordOccurrence = wordOccurrences.get(cleanSpokenWord);
               if (wordOccurrence) {
-                // Find the next unread occurrence
-                const nextOccurrence = wordOccurrence.indices.find((index: number) => index > currentWordIndex);
+                // Find any occurrence of the word, not just the next one
+                const nextOccurrence = wordOccurrence.indices.find((index: number) => index >= currentWordIndex);
                 
                 if (nextOccurrence !== undefined) {
-                  // Update word progress
-                  setWordProgress(prev => {
-                    const newProgress = new Map(prev);
-                    const currentProgress = newProgress.get(cleanSpokenWord);
-                    if (currentProgress) {
-                      newProgress.set(cleanSpokenWord, {
-                        ...currentProgress,
-                        count: currentProgress.count + 1
-                      });
-                    }
-                    return newProgress;
-                  });
-                  
                   setCurrentWordIndex(nextOccurrence);
                   setInterimWordIndex(-1); // Reset interim index
-                  setCorrectWords(prev => prev + 1);
                   animateWordHighlight(nextOccurrence);
                   calculateMetrics();
                   
                   // Enhanced auto-scroll functionality
                   if (autoScrollEnabled) {
-                    const wordHeight = 30;
+                    const wordHeight = 40; // Increased for better spacing
                     const scrollPosition = nextOccurrence * wordHeight;
                     const currentScrollPosition = lastScrollPosition;
                     
@@ -756,24 +760,14 @@ export default function ReadingScreen() {
                   }}
                 >
                   <View style={styles.wordWrap}>
-                    {storyWords.map((word, idx) => {
-                      const scale = idx === currentWordIndex ? highlightAnimation.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [1, 1.2]
-                      }) : 1;
-
-                      return (
-                        <Animated.Text
-                          key={idx}
-                          style={[
-                            ...getWordStyle(word, idx),
-                            { transform: [{ scale }] }
-                          ]}
-                        >
-                          {word}{' '}
-                        </Animated.Text>
-                      );
-                    })}
+                    {storyWords.map((word, idx) => (
+                      <Animated.Text
+                        key={idx}
+                        style={getWordStyle(word, idx)}
+                      >
+                        {word}{' '}
+                      </Animated.Text>
+                    ))}
                   </View>
                 </ScrollView>
 
@@ -912,10 +906,10 @@ const styles = StyleSheet.create({
     height: 400,
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
     position: 'relative',
@@ -980,10 +974,10 @@ const styles = StyleSheet.create({
   },
   textAreaScroll: {
     flex: 1,
-    backgroundColor: '#F0F7FF',
-    borderRadius: 10,
-    padding: 10,
-    marginTop: 6,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
     maxHeight: 320,
   },
   wordWrap: {
@@ -991,15 +985,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginTop: 10,
     paddingBottom: 20,
+    lineHeight: 32,
   },
   word: {
-    fontSize: 18,
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: '#e6eef8',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    fontSize: 20,
+    marginRight: 10,
+    marginBottom: 10,
+    backgroundColor: '#f0f4f8',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     color: '#2a3a4d',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1047,21 +1042,14 @@ const styles = StyleSheet.create({
   recordingTextDisabled: {
     color: '#999999',
   },
-  recognizedWord: {
-    backgroundColor: '#4CAF50',
-    color: '#fff',
-    fontWeight: '500',
-    shadowColor: '#2E7D32',
-    shadowOpacity: 0.2,
-    transform: [{ scale: 0.95 }],
-  },
   currentWord: {
     backgroundColor: '#FFA726',
     color: '#fff',
     fontWeight: '600',
     shadowColor: '#E65100',
     shadowOpacity: 0.3,
-    transform: [{ scale: 1.1 }],
+    shadowRadius: 4,
+    elevation: 3,
   },
   nextWord: {
     backgroundColor: '#E3F2FD',
