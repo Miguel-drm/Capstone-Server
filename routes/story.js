@@ -73,11 +73,30 @@ mongoose.connection.on('connected', () => {
   gfs.collection('storyFiles');
 });
 
-// Upload a new story (with GridFS for PDF)
-router.post('/upload', upload.fields([
-  { name: 'storyFile', maxCount: 1 },
-  { name: 'storyImage', maxCount: 1 }
-]), async (req, res) => {
+// Helper function to save base64 file
+const saveBase64File = async (base64Data, filename, mimetype) => {
+  const uploadDir = path.join(__dirname, '../uploads');
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+  const ext = path.extname(filename);
+  const filePath = path.join(uploadDir, `${filename}-${uniqueSuffix}${ext}`);
+
+  // Remove data URL prefix if present
+  const base64Content = base64Data.replace(/^data:.*?;base64,/, '');
+  await fs.promises.writeFile(filePath, base64Content, 'base64');
+
+  return {
+    path: filePath,
+    filename: `${filename}-${uniqueSuffix}${ext}`,
+    mimetype
+  };
+};
+
+// Upload a new story
+router.post('/upload', async (req, res) => {
   try {
     console.log('Received upload request:', {
       body: req.body,
@@ -85,9 +104,7 @@ router.post('/upload', upload.fields([
       headers: req.headers
     });
 
-    const { title, language } = req.body;
-    const storyFile = req.files['storyFile']?.[0];
-    const storyImage = req.files['storyImage']?.[0];
+    const { title, language, storyFile, storyImage } = req.body;
 
     if (!title) {
       return res.status(400).json({ message: 'Title is required' });
@@ -95,6 +112,23 @@ router.post('/upload', upload.fields([
 
     if (!storyFile) {
       return res.status(400).json({ message: 'Story file is required' });
+    }
+
+    // Save story file
+    const savedStoryFile = await saveBase64File(
+      storyFile.data,
+      storyFile.name,
+      storyFile.type
+    );
+
+    // Save story image if provided
+    let savedStoryImage = null;
+    if (storyImage) {
+      savedStoryImage = await saveBase64File(
+        storyImage.data,
+        storyImage.name,
+        storyImage.type
+      );
     }
 
     // Create relative paths for storage in database
@@ -119,9 +153,9 @@ router.post('/upload', upload.fields([
     }
 
     // Save PDF to GridFS
-    const fileStream = fs.createReadStream(storyFile.path);
-    const uploadStream = gridfsBucket.openUploadStream(storyFile.originalname, {
-      contentType: storyFile.mimetype,
+    const fileStream = fs.createReadStream(savedStoryFile.path);
+    const uploadStream = gridfsBucket.openUploadStream(savedStoryFile.filename, {
+      contentType: savedStoryFile.mimetype,
       metadata: { title, language }
     });
 
@@ -137,16 +171,16 @@ router.post('/upload', upload.fields([
             title,
             language: language || 'english',
             storyFile: {
-              fileName: storyFile.originalname,
-              fileType: storyFile.mimetype,
-              fileSize: storyFile.size,
+              fileName: savedStoryFile.filename,
+              fileType: savedStoryFile.mimetype,
+              fileSize: fs.statSync(savedStoryFile.path).size,
               gridFsId: file._id
             },
-            storyImage: storyImage ? {
-              fileName: storyImage.originalname,
-              imageUrl: getRelativePath(storyImage.path),
-              imageType: storyImage.mimetype,
-              imageSize: storyImage.size
+            storyImage: savedStoryImage ? {
+              fileName: savedStoryImage.filename,
+              imageUrl: getRelativePath(savedStoryImage.path),
+              imageType: savedStoryImage.mimetype,
+              imageSize: fs.statSync(savedStoryImage.path).size
             } : null
           });
 
@@ -154,8 +188,11 @@ router.post('/upload', upload.fields([
           await story.save();
           console.log('Story saved successfully:', story);
 
-          // Clean up the temporary file
-          fs.unlinkSync(storyFile.path);
+          // Clean up the temporary files
+          fs.unlinkSync(savedStoryFile.path);
+          if (savedStoryImage) {
+            fs.unlinkSync(savedStoryImage.path);
+          }
 
           res.status(201).json({ 
             message: 'Story uploaded successfully', 
