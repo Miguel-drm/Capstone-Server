@@ -108,12 +108,12 @@ async function processExcelData(filePath) {
         }
 
         // Get headers and validate
-        const headers = data[0].map(h => h.toLowerCase());
+        const headers = data[0].map(h => String(h).toLowerCase().trim());
         const requiredHeaders = ['name', 'surname', 'grade'];
         const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
         
         if (missingHeaders.length > 0) {
-            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
+            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}. Please ensure your Excel file has the following columns: Name, Surname, Grade`);
         }
 
         // Process rows
@@ -122,6 +122,11 @@ async function processExcelData(filePath) {
         
         data.slice(1).forEach((row, index) => {
             try {
+                if (!row || row.length === 0) {
+                    errors.push(`Row ${index + 2}: Empty row`);
+                    return;
+                }
+
                 const student = {
                     name: String(row[headers.indexOf('name')] || '').trim(),
                     surname: String(row[headers.indexOf('surname')] || '').trim(),
@@ -138,6 +143,10 @@ async function processExcelData(filePath) {
                 errors.push(`Row ${index + 2}: Invalid data format`);
             }
         });
+
+        if (students.length === 0) {
+            throw new Error('No valid students found in the Excel file. Please check the data format.');
+        }
 
         if (errors.length > 0) {
             throw new Error(`Validation errors found:\n${errors.join('\n')}`);
