@@ -316,10 +316,24 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 // Route for getting all students
 router.get('/students', async (req, res) => {
     try {
+        console.log('Received request for students');
+        console.log('Auth header:', req.headers.authorization);
+
+        // Check if user is authenticated
+        if (!req.headers.authorization) {
+            console.log('No authorization header found');
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
         const students = await Student.find({})
             .sort({ name: 1, surname: 1 })
             .select('name surname grade');
             
+        console.log(`Found ${students.length} students`);
+        
         res.status(200).json({
             success: true,
             count: students.length,
@@ -329,7 +343,8 @@ router.get('/students', async (req, res) => {
         console.error('Error fetching students:', error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching students'
+            message: 'Error fetching students',
+            error: error.message
         });
     }
 });
