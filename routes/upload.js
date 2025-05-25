@@ -5,8 +5,7 @@ const xlsx = require('xlsx');
 const Student = require('../models/Student');
 const { v4: uuidv4 } = require('uuid');
 
-
-// Configure multer for file upload
+// Configure multer for file upload with better error handling
 const storage = multer.memoryStorage();
 const upload = multer({
     storage: storage,
@@ -21,7 +20,31 @@ const upload = multer({
         }
         cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
     }
-});
+}).single('file');
+
+// Wrapper for multer to handle errors
+const uploadMiddleware = (req, res, next) => {
+    upload(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'File size must be less than 5MB'
+                });
+            }
+            return res.status(400).json({
+                success: false,
+                message: err.message
+            });
+        } else if (err) {
+            return res.status(400).json({
+                success: false,
+                message: err.message
+            });
+        }
+        next();
+    });
+};
 
 // Function to validate student data
 function validateStudent(student) {
@@ -204,7 +227,7 @@ async function importStudentsToDatabase(students) {
 }
 
 // Route for handling Excel file upload
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', uploadMiddleware, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
