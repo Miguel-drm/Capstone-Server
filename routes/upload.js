@@ -4,9 +4,19 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const Student = require('../models/Student');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 
 // Configure multer for file upload with better error handling
-const storage = multer.memoryStorage();
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/') // Make sure this directory exists
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
 const upload = multer({
     storage: storage,
     limits: {
@@ -14,8 +24,8 @@ const upload = multer({
     },
     fileFilter: (req, file, cb) => {
         // Check file extension
-        const ext = file.originalname.split('.').pop().toLowerCase();
-        if (ext === 'xlsx' || ext === 'xls') {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ext === '.xlsx' || ext === '.xls') {
             return cb(null, true);
         }
         cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
@@ -76,10 +86,10 @@ function validateStudent(student) {
 }
 
 // Function to process Excel data
-async function processExcelData(fileBuffer) {
+async function processExcelData(filePath) {
     try {
         // Read the Excel file
-        const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
+        const workbook = xlsx.readFile(filePath);
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
@@ -236,14 +246,12 @@ router.post('/upload', uploadMiddleware, async (req, res) => {
             });
         }
 
-        console.log('Processing file:', req.file.originalname);
-        
         // Process Excel data
-        const students = await processExcelData(req.file.buffer);
-        console.log(`Processed ${students.length} valid students`);
-
+        const students = await processExcelData(req.file.path);
+        
         // Generate a unique importBatchId for this upload
         const importBatchId = uuidv4();
+        
         // Assign importBatchId to each student
         students.forEach(student => {
             student.importBatchId = importBatchId;
@@ -275,7 +283,7 @@ router.post('/upload', uploadMiddleware, async (req, res) => {
             newStudentsCount: insertedStudents.length,
             previousCount: existingCount,
             totalInDatabase: totalStudents,
-            importBatchId // Optionally return the batch ID
+            importBatchId
         });
 
     } catch (error) {
