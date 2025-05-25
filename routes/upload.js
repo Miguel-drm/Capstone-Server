@@ -5,25 +5,32 @@ const xlsx = require('xlsx');
 const Student = require('../models/Student');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+const fs = require('fs');
 
-// Configure multer for file upload with better error handling
+// Create uploads directory if it doesn't exist
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Configure multer for file upload
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, 'uploads/') // Make sure this directory exists
+        cb(null, uploadDir);
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+        cb(null, 'excel-' + uniqueSuffix + path.extname(file.originalname));
     }
 });
 
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+        fieldSize: 5 * 1024 * 1024 // 5MB limit for field size
     },
     fileFilter: (req, file, cb) => {
-        // Check file extension
         const ext = path.extname(file.originalname).toLowerCase();
         if (ext === '.xlsx' || ext === '.xls') {
             return cb(null, true);
@@ -52,6 +59,26 @@ const uploadMiddleware = (req, res, next) => {
                 message: err.message
             });
         }
+        
+        // Check if file exists
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No file uploaded'
+            });
+        }
+
+        // Validate file type
+        const ext = path.extname(req.file.originalname).toLowerCase();
+        if (ext !== '.xlsx' && ext !== '.xls') {
+            // Clean up the uploaded file
+            fs.unlinkSync(req.file.path);
+            return res.status(400).json({
+                success: false,
+                message: 'Only Excel files (.xlsx, .xls) are allowed!'
+            });
+        }
+
         next();
     });
 };
@@ -142,110 +169,9 @@ async function processExcelData(filePath) {
     }
 }
 
-// Function to import students to database
-async function importStudentsToDatabase(students) {
-    try {
-        console.log('Starting to import new students...');
-
-        // Insert new students in batches
-        const batchSize = 50;
-        const batches = [];
-        
-        for (let i = 0; i < students.length; i += batchSize) {
-            batches.push(students.slice(i, i + batchSize));
-        }
-
-        const results = [];
-        const errors = [];
-
-        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-            const batch = batches[batchIndex];
-            try {
-                // Try to insert the batch
-                const batchResult = await Student.insertMany(batch, { 
-                    ordered: false, // Continue processing even if some documents fail
-                    rawResult: true // Get detailed result information
-                });
-                
-                if (batchResult.insertedCount > 0) {
-                    results.push(...batchResult.insertedIds);
-                    console.log(`Successfully inserted batch ${batchIndex + 1} with ${batchResult.insertedCount} students`);
-                }
-
-                // Check for write errors
-                if (batchResult.writeErrors && batchResult.writeErrors.length > 0) {
-                    batchResult.writeErrors.forEach(err => {
-                        const student = batch[err.index];
-                        errors.push({
-                            row: batchIndex * batchSize + err.index + 1,
-                            student: `${student.name} ${student.surname}`,
-                            error: err.errmsg
-                        });
-                    });
-                }
-            } catch (batchError) {
-                console.error(`Error processing batch ${batchIndex + 1}:`, batchError);
-                // Try inserting one by one if batch insert fails
-                for (let i = 0; i < batch.length; i++) {
-                    try {
-                        const student = batch[i];
-                        // Check if student with same name and surname already exists
-                        const existingStudent = await Student.findOne({
-                            name: student.name,
-                            surname: student.surname
-                        });
-
-                        if (existingStudent) {
-                            // Update existing student
-                            const updatedStudent = await Student.findByIdAndUpdate(
-                                existingStudent._id,
-                                { $set: student },
-                                { new: true }
-                            );
-                            results.push(updatedStudent._id);
-                            console.log(`Updated existing student: ${student.name} ${student.surname}`);
-                        } else {
-                            // Insert new student
-                            const newStudent = await Student.create(student);
-                            results.push(newStudent._id);
-                            console.log(`Successfully inserted student: ${student.name} ${student.surname}`);
-                        }
-                    } catch (singleError) {
-                        errors.push({
-                            row: batchIndex * batchSize + i + 1,
-                            student: `${batch[i].name} ${batch[i].surname}`,
-                            error: singleError.message
-                        });
-                    }
-                }
-            }
-        }
-
-        // If we have any errors, throw them with details
-        if (errors.length > 0) {
-            const errorMessage = errors.map(err => 
-                `Row ${err.row} (${err.student}): ${err.error}`
-            ).join('\n');
-            throw new Error(`Some students could not be inserted:\n${errorMessage}`);
-        }
-
-        return results;
-    } catch (error) {
-        console.error('Database insertion error:', error);
-        throw error;
-    }
-}
-
 // Route for handling Excel file upload
 router.post('/upload', uploadMiddleware, async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please upload an Excel file'
-            });
-        }
-
         // Process Excel data
         const students = await processExcelData(req.file.path);
         
@@ -257,25 +183,30 @@ router.post('/upload', uploadMiddleware, async (req, res) => {
             student.importBatchId = importBatchId;
         });
 
-        // Filter out students that already exist (by name + surname)
-        const existingStudents = await Student.find({
-          $or: students.map(s => ({ name: s.name, surname: s.surname }))
-        }, { name: 1, surname: 1 });
-        const existingSet = new Set(existingStudents.map(s => `${s.name}|${s.surname}`));
-        const uniqueStudents = students.filter(s => !existingSet.has(`${s.name}|${s.surname}`));
-        console.log(`Filtered out ${students.length - uniqueStudents.length} duplicate students`);
-
         // Get count of existing students
         const existingCount = await Student.countDocuments();
-        console.log('Existing students in database:', existingCount);
 
-        // Import to database
-        const insertedStudents = await importStudentsToDatabase(uniqueStudents);
-        console.log(`Successfully inserted ${insertedStudents.length} new students`);
+        // Import to database with error handling
+        let insertedStudents;
+        try {
+            insertedStudents = await Student.insertMany(students, { 
+                ordered: false // Continue processing even if some documents fail
+            });
+        } catch (insertError) {
+            // If there are duplicate key errors, handle them gracefully
+            if (insertError.code === 11000) {
+                // Get the successfully inserted students
+                insertedStudents = insertError.result.result.insertedIds;
+            } else {
+                throw insertError;
+            }
+        }
 
         // Get total count after insertion
         const totalStudents = await Student.countDocuments();
-        console.log('Total students in database:', totalStudents);
+
+        // Clean up: Delete the uploaded file
+        fs.unlinkSync(req.file.path);
 
         res.status(200).json({
             success: true,
@@ -287,6 +218,11 @@ router.post('/upload', uploadMiddleware, async (req, res) => {
         });
 
     } catch (error) {
+        // Clean up: Delete the uploaded file if it exists
+        if (req.file && req.file.path) {
+            fs.unlinkSync(req.file.path);
+        }
+
         console.error('Error processing upload:', error);
         res.status(500).json({
             success: false,
