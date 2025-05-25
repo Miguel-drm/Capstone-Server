@@ -4,24 +4,64 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const Student = require('../models/Student');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
 
+// Create uploads directory if it doesn't exist
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-// Configure multer for file upload
-const storage = multer.memoryStorage();
+// Configure multer for file upload with disk storage
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+// Configure multer with better error handling
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+        fieldSize: 5 * 1024 * 1024 // 5MB limit for fields
     },
     fileFilter: (req, file, cb) => {
         // Check file extension
-        const ext = file.originalname.split('.').pop().toLowerCase();
-        if (ext === 'xlsx' || ext === 'xls') {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ext === '.xlsx' || ext === '.xls') {
             return cb(null, true);
         }
         cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
     }
 });
+
+// Create a middleware function to handle multer errors
+const handleMulterError = (err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+                success: false,
+                message: 'File size too large. Maximum size is 5MB.'
+            });
+        }
+        return res.status(400).json({
+            success: false,
+            message: `Upload error: ${err.message}`
+        });
+    } else if (err) {
+        return res.status(400).json({
+            success: false,
+            message: err.message
+        });
+    }
+    next();
+};
 
 // Function to validate student data
 function validateStudent(student) {
@@ -53,10 +93,10 @@ function validateStudent(student) {
 }
 
 // Function to process Excel data
-async function processExcelData(fileBuffer) {
+async function processExcelData(filePath) {
     try {
         // Read the Excel file
-        const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
+        const workbook = xlsx.readFile(filePath);
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
@@ -204,7 +244,7 @@ async function importStudentsToDatabase(students) {
 }
 
 // Route for handling Excel file upload
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', upload.single('file'), handleMulterError, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -216,7 +256,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         console.log('Processing file:', req.file.originalname);
         
         // Process Excel data
-        const students = await processExcelData(req.file.buffer);
+        const students = await processExcelData(req.file.path);
         console.log(`Processed ${students.length} valid students`);
 
         // Generate a unique importBatchId for this upload
@@ -242,6 +282,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const insertedStudents = await importStudentsToDatabase(uniqueStudents);
         console.log(`Successfully inserted ${insertedStudents.length} new students`);
 
+        // Clean up: Delete the uploaded file
+        fs.unlinkSync(req.file.path);
+
         // Get total count after insertion
         const totalStudents = await Student.countDocuments();
         console.log('Total students in database:', totalStudents);
@@ -252,10 +295,16 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             newStudentsCount: insertedStudents.length,
             previousCount: existingCount,
             totalInDatabase: totalStudents,
-            importBatchId // Optionally return the batch ID
+            importBatchId,
+            errors: insertedStudents.length > 0 ? undefined : undefined
         });
 
     } catch (error) {
+        // Clean up: Delete the uploaded file if it exists
+        if (req.file && req.file.path) {
+            fs.unlinkSync(req.file.path);
+        }
+
         console.error('Error processing upload:', error);
         res.status(500).json({
             success: false,
