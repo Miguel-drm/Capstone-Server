@@ -6,7 +6,7 @@ const Student = require('../models/Student');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
-const { verifyToken } = require('../middlewares/authMiddleware');
+const verifyToken = require('../middleware/verifyToken');
 
 // Create uploads directory if it doesn't exist
 const uploadDir = path.join(__dirname, '../uploads');

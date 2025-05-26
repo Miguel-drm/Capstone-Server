@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Test = require('../models/Test'); // Import the Test model
-const verifyToken = require('../middleware/verifyToken'); // Assuming you want to protect these routes
+const verifyToken = require('../middleware/verifyToken'); // Corrected path
 
 // Route to create a new test
 router.post('/', verifyToken, async (req, res) => {
