@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Test = require('../models/Test');
-const auth = require('../middleware/auth');
+const auth = require('./auth');
 
 // Create a new test
 router.post('/', auth, async (req, res) => {
