@@ -94,10 +94,17 @@ router.post('/', auth, async (req, res) => {
 // Get all tests
 router.get('/', auth, async (req, res) => {
   try {
+    console.log('=== Fetching All Tests ===');
+    console.log('User from auth:', req.user);
+    console.log('Auth token:', req.headers.authorization);
+
     const tests = await Test.find()
       .populate('studentId', 'name surname')
       .populate('storyId', 'title')
       .sort({ createdAt: -1 });
+
+    console.log('Tests found:', tests.length);
+    console.log('First test (if any):', tests[0]);
 
     res.json({
       success: true,
@@ -105,9 +112,10 @@ router.get('/', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching tests:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Error fetching tests'
+      message: 'Error fetching tests: ' + error.message
     });
   }
 });
