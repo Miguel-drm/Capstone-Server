@@ -268,27 +268,21 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
         const students = await processExcelData(req.file.path);
         console.log(`Processed ${students.length} valid students`);
 
-        // Generate a unique importBatchId for this upload
-        const importBatchId = uuidv4();
-        // Assign importBatchId to each student
-        students.forEach(student => {
-            student.importBatchId = importBatchId;
-        });
-
-        // Filter out students that already exist (by name + surname)
-        const existingStudents = await Student.find({
-          $or: students.map(s => ({ name: s.name, surname: s.surname }))
-        }, { name: 1, surname: 1 });
-        const existingSet = new Set(existingStudents.map(s => `${s.name}|${s.surname}`));
-        const uniqueStudents = students.filter(s => !existingSet.has(`${s.name}|${s.surname}`));
-        console.log(`Filtered out ${students.length - uniqueStudents.length} duplicate students`);
+        if (students.length === 0) {
+            // Clean up: Delete the uploaded file
+            fs.unlinkSync(req.file.path);
+            return res.status(400).json({
+                success: false,
+                message: 'No valid students found in the Excel file. Please check the file format.'
+            });
+        }
 
         // Get count of existing students
         const existingCount = await Student.countDocuments();
         console.log('Existing students in database:', existingCount);
 
         // Import to database
-        const insertedStudents = await importStudentsToDatabase(uniqueStudents);
+        const insertedStudents = await importStudentsToDatabase(students);
         console.log(`Successfully inserted ${insertedStudents.length} new students`);
 
         // Clean up: Delete the uploaded file
@@ -298,14 +292,12 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
         const totalStudents = await Student.countDocuments();
         console.log('Total students in database:', totalStudents);
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: 'Students imported successfully',
             newStudentsCount: insertedStudents.length,
             previousCount: existingCount,
-            totalInDatabase: totalStudents,
-            importBatchId,
-            errors: insertedStudents.length > 0 ? undefined : undefined
+            totalInDatabase: totalStudents
         });
 
     } catch (error) {
@@ -315,9 +307,9 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
         }
 
         console.error('Error processing upload:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            message: error.message
+            message: error.message || 'Error processing Excel file'
         });
     }
 });
