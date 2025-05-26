@@ -53,7 +53,8 @@ const testSchema = new mongoose.Schema({
     default: Date.now
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  collection: 'tests'
 });
 
 // Add validation to ensure at least one question exists

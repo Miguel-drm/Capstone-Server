@@ -6,10 +6,15 @@ const auth = require('./auth');
 // Create a new test
 router.post('/', auth, async (req, res) => {
   try {
+    console.log('=== Test Creation Request ===');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    console.log('User from auth:', req.user);
+    
     const { title, testType, studentId, grade, storyId, questions } = req.body;
 
     // Validate required fields
     if (!title || !testType || !questions || questions.length === 0) {
+      console.log('Validation failed: Missing required fields');
       return res.status(400).json({
         success: false,
         message: 'Title, test type, and at least one question are required'
@@ -18,6 +23,7 @@ router.post('/', auth, async (req, res) => {
 
     // Validate test type
     if (!['pre', 'post'].includes(testType)) {
+      console.log('Validation failed: Invalid test type');
       return res.status(400).json({
         success: false,
         message: 'Test type must be either "pre" or "post"'
@@ -26,6 +32,7 @@ router.post('/', auth, async (req, res) => {
 
     // Validate that either studentId or grade is provided
     if (!studentId && !grade) {
+      console.log('Validation failed: Neither student nor grade specified');
       return res.status(400).json({
         success: false,
         message: 'Either student or grade must be specified'
@@ -35,12 +42,22 @@ router.post('/', auth, async (req, res) => {
     // Validate questions
     for (const question of questions) {
       if (!question.questionText || !question.correctAnswer) {
+        console.log('Validation failed: Invalid question format');
         return res.status(400).json({
           success: false,
           message: 'Each question must have both question text and correct answer'
         });
       }
     }
+
+    console.log('Creating new test with data:', {
+      title,
+      testType,
+      studentId: studentId || undefined,
+      grade: grade || undefined,
+      storyId: storyId || undefined,
+      questions
+    });
 
     // Create new test
     const test = new Test({
@@ -52,16 +69,21 @@ router.post('/', auth, async (req, res) => {
       questions
     });
 
+    console.log('Test object before save:', JSON.stringify(test, null, 2));
+
     // Save test
-    await test.save();
+    console.log('Attempting to save test...');
+    const savedTest = await test.save();
+    console.log('Test saved successfully:', JSON.stringify(savedTest, null, 2));
 
     res.status(201).json({
       success: true,
       message: 'Test created successfully',
-      test
+      test: savedTest
     });
   } catch (error) {
     console.error('Error creating test:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: error.message || 'Error creating test'
