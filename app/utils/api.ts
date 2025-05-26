@@ -58,15 +58,26 @@ export const api = {
         }
 
         console.log('Attempting login for:', email);
+        console.log('API URL:', `${API_URL}/auth/login`);
+        
         const response = await fetch(`${API_URL}/auth/login`, {
           method: 'POST',
-          headers: await getHeaders(),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
           body: JSON.stringify({ email, password }),
           signal: AbortSignal.timeout(10000) // 10 second timeout
         });
         
         console.log('Login response status:', response.status);
-        const data = await handleResponse(response);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
         console.log('Login response data:', data);
 
         if (data.token) {
@@ -194,10 +205,28 @@ export const api = {
   // Student endpoints
   students: {
     getAll: async () => {
-      const response = await fetch(`${API_URL}/upload/students`, {
-        headers: await getHeaders(),
-      });
-      return handleResponse(response);
+      console.log('Calling API to get all students...');
+      try {
+        const response = await fetch(`${API_URL}/upload/students`, {
+          headers: await getHeaders(),
+        });
+
+        console.log('Response status from /upload/students:', response.status);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('API Error getting students:', errorData);
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Successfully fetched students data:', data);
+        return data;
+
+      } catch (error: any) {
+        console.error('Fetch error in api.students.getAll:', error);
+        throw error;
+      }
     },
   },
 

@@ -133,11 +133,18 @@ export default function ReadingScreen() {
     const fetchStudents = async () => {
       setLoadingStudents(true);
       try {
+        console.log('Fetching students for ReadingScreen...');
         const res = await api.students.getAll();
-        console.log('Students API response:', res); // Debug log
-        setStudents(res.students || []);
-      } catch (e) {
-        console.log('Error fetching students:', e); // Debug log
+        console.log('Students fetched for ReadingScreen:', res);
+        if (res.students && Array.isArray(res.students)) {
+          setStudents(res.students);
+          console.log(`Successfully loaded ${res.students.length} students.`);
+        } else {
+          console.warn('Students data is missing or not an array in API response:', res);
+          setStudents([]); // Ensure students is always an array
+        }
+      } catch (e: any) {
+        console.error('Error fetching students for ReadingScreen:', e);
         setStudents([]);
       } finally {
         setLoadingStudents(false);

@@ -4,24 +4,64 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const Student = require('../models/Student');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
 
+// Create uploads directory if it doesn't exist
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-// Configure multer for file upload
-const storage = multer.memoryStorage();
+// Configure multer for file upload with disk storage
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+// Configure multer with better error handling
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+        fieldSize: 5 * 1024 * 1024 // 5MB limit for fields
     },
     fileFilter: (req, file, cb) => {
         // Check file extension
-        const ext = file.originalname.split('.').pop().toLowerCase();
-        if (ext === 'xlsx' || ext === 'xls') {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ext === '.xlsx' || ext === '.xls') {
             return cb(null, true);
         }
         cb(new Error('Only Excel files (.xlsx, .xls) are allowed!'), false);
     }
 });
+
+// Create a middleware function to handle multer errors
+const handleMulterError = (err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+                success: false,
+                message: 'File size too large. Maximum size is 5MB.'
+            });
+        }
+        return res.status(400).json({
+            success: false,
+            message: `Upload error: ${err.message}`
+        });
+    } else if (err) {
+        return res.status(400).json({
+            success: false,
+            message: err.message
+        });
+    }
+    next();
+};
 
 // Function to validate student data
 function validateStudent(student) {
@@ -53,10 +93,10 @@ function validateStudent(student) {
 }
 
 // Function to process Excel data
-async function processExcelData(fileBuffer) {
+async function processExcelData(filePath) {
     try {
         // Read the Excel file
-        const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
+        const workbook = xlsx.readFile(filePath);
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
@@ -68,12 +108,12 @@ async function processExcelData(fileBuffer) {
         }
 
         // Get headers and validate
-        const headers = data[0].map(h => h.toLowerCase());
+        const headers = data[0].map(h => String(h).toLowerCase().trim());
         const requiredHeaders = ['name', 'surname', 'grade'];
         const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
         
         if (missingHeaders.length > 0) {
-            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
+            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}. Please ensure your Excel file has the following columns: Name, Surname, Grade`);
         }
 
         // Process rows
@@ -82,6 +122,11 @@ async function processExcelData(fileBuffer) {
         
         data.slice(1).forEach((row, index) => {
             try {
+                if (!row || row.length === 0) {
+                    errors.push(`Row ${index + 2}: Empty row`);
+                    return;
+                }
+
                 const student = {
                     name: String(row[headers.indexOf('name')] || '').trim(),
                     surname: String(row[headers.indexOf('surname')] || '').trim(),
@@ -99,8 +144,12 @@ async function processExcelData(fileBuffer) {
             }
         });
 
+        if (students.length === 0) {
+            throw new Error('No valid students found in the Excel file. Please check the data format.');
+        }
+
         if (errors.length > 0) {
-            throw new Error(`Validation errors found:\n${errors.join('\n')}`);
+            console.warn('Validation errors found:', errors);
         }
 
         return students;
@@ -204,7 +253,7 @@ async function importStudentsToDatabase(students) {
 }
 
 // Route for handling Excel file upload
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', upload.single('file'), handleMulterError, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -216,8 +265,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         console.log('Processing file:', req.file.originalname);
         
         // Process Excel data
-        const students = await processExcelData(req.file.buffer);
+        const students = await processExcelData(req.file.path);
         console.log(`Processed ${students.length} valid students`);
+
+        if (students.length === 0) {
+            // Clean up: Delete the uploaded file
+            fs.unlinkSync(req.file.path);
+            return res.status(400).json({
+                success: false,
+                message: 'No valid students found in the Excel file. Please check the file format.'
+            });
+        }
 
         // Generate a unique importBatchId for this upload
         const importBatchId = uuidv4();
@@ -226,40 +284,39 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             student.importBatchId = importBatchId;
         });
 
-        // Filter out students that already exist (by name + surname)
-        const existingStudents = await Student.find({
-          $or: students.map(s => ({ name: s.name, surname: s.surname }))
-        }, { name: 1, surname: 1 });
-        const existingSet = new Set(existingStudents.map(s => `${s.name}|${s.surname}`));
-        const uniqueStudents = students.filter(s => !existingSet.has(`${s.name}|${s.surname}`));
-        console.log(`Filtered out ${students.length - uniqueStudents.length} duplicate students`);
-
         // Get count of existing students
         const existingCount = await Student.countDocuments();
         console.log('Existing students in database:', existingCount);
 
         // Import to database
-        const insertedStudents = await importStudentsToDatabase(uniqueStudents);
+        const insertedStudents = await importStudentsToDatabase(students);
         console.log(`Successfully inserted ${insertedStudents.length} new students`);
+
+        // Clean up: Delete the uploaded file
+        fs.unlinkSync(req.file.path);
 
         // Get total count after insertion
         const totalStudents = await Student.countDocuments();
         console.log('Total students in database:', totalStudents);
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: 'Students imported successfully',
             newStudentsCount: insertedStudents.length,
             previousCount: existingCount,
-            totalInDatabase: totalStudents,
-            importBatchId // Optionally return the batch ID
+            totalInDatabase: totalStudents
         });
 
     } catch (error) {
+        // Clean up: Delete the uploaded file if it exists
+        if (req.file && req.file.path) {
+            fs.unlinkSync(req.file.path);
+        }
+
         console.error('Error processing upload:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            message: error.message
+            message: error.message || 'Error processing Excel file'
         });
     }
 });
@@ -267,20 +324,37 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 // Route for getting all students
 router.get('/students', async (req, res) => {
     try {
+        console.log('Received request for students');
+        console.log('Auth header:', req.headers.authorization);
+
+        // Check if user is authenticated
+        if (!req.headers.authorization) {
+            console.log('No authorization header found');
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
         const students = await Student.find({})
             .sort({ name: 1, surname: 1 })
             .select('name surname grade');
             
-        res.status(200).json({
+        console.log(`Found ${students.length} students in database.`);
+        console.log('Students data to be sent:', students);
+
+        // Ensure we're sending a consistent response format
+        return res.status(200).json({
             success: true,
             count: students.length,
-            students: students
+            students: students || [] // Ensure students is always an array
         });
     } catch (error) {
         console.error('Error fetching students:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            message: 'Error fetching students'
+            message: 'Error fetching students',
+            error: error.message
         });
     }
 });

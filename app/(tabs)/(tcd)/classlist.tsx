@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import CustomModal from '@/constants/CustomModal';
 import InstructionModal from '@/constants/InstructionModal';
-import { api, API_URL, getHeaders } from '../../utils/api';    
+import { api, API_URL, getHeaders, auth } from '../../utils/api';    
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Student {
   _id: string;  // MongoDB's _id field
@@ -20,6 +22,7 @@ interface StudentGroup {
 }
 
 export default function ClassListScreen() {
+  const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [alertModalVisible, setAlertModalVisible] = useState(false);
@@ -29,32 +32,73 @@ export default function ClassListScreen() {
   const [openBatchId, setOpenBatchId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchStudents();
+    checkAuthAndFetchStudents();
   }, []);
+
+  const checkAuthAndFetchStudents = async () => {
+    try {
+      const isAuthenticated = await auth.isAuthenticated();
+      if (!isAuthenticated) {
+        console.log('User not authenticated, redirecting to login');
+        router.replace('/login');
+        return;
+      }
+      await fetchStudents();
+    } catch (error) {
+      console.error('Auth check error:', error);
+      router.replace('/login');
+    }
+  };
 
   const fetchStudents = async () => {
     try {
       setLoading(true);
       console.log('Fetching students from:', `${API_URL}/upload/students`);
       
+      // Get headers with authentication
+      const headers = await getHeaders();
+      console.log('Request headers:', headers);
+      
+      // Check if we have a token
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+      
       const response = await fetch(`${API_URL}/upload/students`, {
-        headers: await getHeaders()
+        method: 'GET',
+        headers: {
+          ...headers,
+          'Authorization': `Bearer ${token}`
+        }
       });
+      
       console.log('Response status:', response.status);
       
+      // Get response text first
       const responseText = await response.text();
       console.log('Raw response:', responseText);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Clear invalid token
+          await AsyncStorage.removeItem('userToken');
+          throw new Error('Authentication required. Please log in again.');
+        }
+        throw new Error(`Server error: ${response.status} - ${responseText}`);
+      }
 
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (e) {
         console.error('Failed to parse response:', e);
-        throw new Error('Invalid response from server');
+        throw new Error('Invalid response format from server');
       }
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to fetch students');
+      if (!data.students || !Array.isArray(data.students)) {
+        console.error('Invalid data format:', data);
+        throw new Error('Invalid data format received from server');
       }
 
       console.log('Fetched students:', data.students);
@@ -62,8 +106,13 @@ export default function ClassListScreen() {
     } catch (error: any) {
       console.error('Error fetching students:', error);
       setAlertModalType('error');
-      setAlertModalMessage(error.message || 'Failed to fetch students. Please try again.');
+      setAlertModalMessage(
+        error.message || 
+        'Failed to fetch students. Please check your internet connection and try again.'
+      );
       setAlertModalVisible(true);
+      // Clear students array on error
+      setStudents([]);
     } finally {
       setLoading(false);
     }
@@ -101,18 +150,41 @@ export default function ClassListScreen() {
       const response = await fetch(result.assets[0].uri);
       const blob = await response.blob();
       
-      // Append the file to formData
-      formData.append('file', blob, result.assets[0].name);
+      // Append the file to formData with the correct field name
+      // Ensure the file object structure is correct for both web and native
+      if (Platform.OS === 'web') {
+        // For web, formData.append expects a Blob or File object
+        formData.append('file', blob, result.assets[0].name); // Use the blob directly and provide filename
+      } else {
+        // For native (iOS/Android), formData.append expects an object with uri, type, and name
+        formData.append('file', {
+          uri: result.assets[0].uri,
+          type: result.assets[0].mimeType || 'application/octet-stream', // Provide a default type if missing
+          name: result.assets[0].name || 'upload.xlsx', // Provide a default name if missing
+        } as any); // Use 'as any' to satisfy TypeScript if needed, as RN's fetch FormData might have slightly different typing
+      }
 
-      console.log('FormData created:', {
-        hasFile: formData.has('file'),
-        fileName: result.assets[0].name
-      });
+      // Get headers with authentication
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      // Create new headers object for multipart/form-data
+      // When sending FormData, fetch automatically sets Content-Type with the correct boundary.
+      // Manually setting it can cause issues.
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      };
+
+      // Show loading message
+      setAlertModalType('info');
+      setAlertModalMessage('Uploading and processing Excel file...');
+      setAlertModalVisible(true);
 
       // Make the request
       console.log('Sending request to:', `${API_URL}/upload/upload`);
-      const headers = await getHeaders();
-      delete (headers as any)['Content-Type']; // Let fetch set the correct boundary for multipart/form-data
       const uploadResponse = await fetch(`${API_URL}/upload/upload`, {
         method: 'POST',
         body: formData,
@@ -120,7 +192,6 @@ export default function ClassListScreen() {
       });
 
       console.log('Response status:', uploadResponse.status);
-      console.log('Response headers:', JSON.stringify(uploadResponse.headers));
 
       // Get response text first
       const responseText = await uploadResponse.text();
@@ -136,19 +207,31 @@ export default function ClassListScreen() {
       }
 
       if (!uploadResponse.ok) {
+        if (uploadResponse.status === 401) {
+          throw new Error('Authentication required. Please log in again.');
+        }
         throw new Error(data.message || 'Failed to upload file');
       }
 
+      // Show success message with details
       setAlertModalType('success');
-      setAlertModalMessage(`Successfully imported ${data.newStudentsCount} students!`);
+      setAlertModalMessage(
+        `Successfully imported ${data.newStudentsCount} students!\n\n` +
+        `Previous count: ${data.previousCount}\n` +
+        `Total in database: ${data.totalInDatabase}\n` +
+        (data.errors ? `\nNote: ${data.errors.length} errors occurred during import.` : '')
+      );
       setAlertModalVisible(true);
 
       // Refresh the student list
-      fetchStudents();
+      await fetchStudents();
     } catch (error: any) {
       console.error('Upload error:', error);
       setAlertModalType('error');
-      setAlertModalMessage(error.message || 'Failed to import Excel file. Please try again.');
+      setAlertModalMessage(
+        error.message || 
+        'Failed to import Excel file. Please ensure the file format is correct and try again.'
+      );
       setAlertModalVisible(true);
     } finally {
       setLoading(false);

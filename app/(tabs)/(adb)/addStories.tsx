@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '../../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomModal from '../../../constants/CustomModal';
+import * as FileSystem from 'expo-file-system';
 
 export default function AddStories() {
   const [title, setTitle] = useState('');
@@ -112,24 +113,21 @@ export default function AddStories() {
 
       const formData = new FormData();
       formData.append('title', title);
-      formData.append('language', language);
+      formData.append('language', language.toLowerCase());
       
       if (storyFile && !storyFile.canceled) {
         const fileUri = storyFile.assets[0].uri;
         const fileType = storyFile.assets[0].mimeType || 'application/pdf';
         const fileName = storyFile.assets[0].name;
 
-        console.log('Story File Details:', {
-          uri: fileUri,
+        // Create file object for story file
+        const storyFileObj = {
+          uri: Platform.OS === 'ios' ? fileUri.replace('file://', '') : fileUri,
           type: fileType,
           name: fileName
-        });
+        };
 
-        // Create a blob from the file
-        const response = await fetch(fileUri);
-        const blob = await response.blob();
-
-        formData.append('storyFile', blob, fileName);
+        formData.append('storyFile', storyFileObj as any);
       }
       
       if (storyImage) {
@@ -137,49 +135,103 @@ export default function AddStories() {
         const imageType = 'image/jpeg';
         const imageName = 'image.jpg';
 
-        console.log('Story Image Details:', {
-          uri: imageUri,
+        // Create file object for image
+        const imageFileObj = {
+          uri: Platform.OS === 'ios' ? imageUri.replace('file://', '') : imageUri,
           type: imageType,
           name: imageName
-        });
+        };
 
-        // Create a blob from the image
-        const response = await fetch(imageUri);
-        const blob = await response.blob();
-
-        formData.append('storyImage', blob, imageName);
+        formData.append('storyImage', imageFileObj as any);
       }
 
-      // Log the entire FormData contents
-      console.log('Form Data Contents:', {
+      // Log the complete FormData
+      console.log('FormData contents:', {
         title,
         language,
         hasStoryFile: !!storyFile,
         hasStoryImage: !!storyImage
       });
 
-      const response = await fetch(`${API_URL}/stories/upload`, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Accept': 'application/json',
-        },
+      // Use XMLHttpRequest for file upload
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        xhr.onreadystatechange = () => {
+          console.log('XHR State:', xhr.readyState, 'Status:', xhr.status);
+          
+          if (xhr.readyState === 4) {
+            console.log('Response Headers:', xhr.getAllResponseHeaders());
+            console.log('Response Text:', xhr.responseText);
+            
+            if (xhr.status === 200 || xhr.status === 201) {
+              try {
+                const responseData = JSON.parse(xhr.responseText);
+                console.log('Server Response:', responseData);
+                
+                if (responseData.story) {
+                  showModal('success', 'Story added successfully!');
+                  setFormModalVisible(false);
+                  setTitle('');
+                  setLanguage('english');
+                  setStoryFile(null);
+                  setStoryImage(null);
+                  fetchStories();
+                  resolve(responseData);
+                } else {
+                  console.error('Invalid server response:', responseData);
+                  showModal('error', 'Server response was invalid');
+                  reject(new Error('Invalid server response'));
+                }
+              } catch (error) {
+                console.error('Error parsing response:', error);
+                showModal('error', 'Failed to process server response');
+                reject(error);
+              }
+            } else {
+              try {
+                const errorData = JSON.parse(xhr.responseText);
+                console.error('Upload error:', {
+                  status: xhr.status,
+                  statusText: xhr.statusText,
+                  error: errorData
+                });
+                showModal('error', errorData.message || 'Failed to upload story');
+              } catch (error) {
+                console.error('Upload error:', {
+                  status: xhr.status,
+                  statusText: xhr.statusText,
+                  response: xhr.responseText
+                });
+                showModal('error', 'Failed to upload story');
+              }
+              reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+            }
+          }
+        };
+
+        xhr.onerror = (error) => {
+          console.error('Network error during upload:', error);
+          showModal('error', 'Network error during upload');
+          reject(new Error('Network error'));
+        };
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = (event.loaded / event.total) * 100;
+            console.log('Upload progress:', percentComplete.toFixed(2) + '%');
+          }
+        };
+
+        xhr.open('POST', `${API_URL}/stories/upload`);
+        xhr.setRequestHeader('Accept', 'application/json');
+        
+        // Log the request details
+        console.log('Sending request to:', `${API_URL}/stories/upload`);
+        
+        xhr.send(formData as any);
       });
 
-      const responseData = await response.json();
-      console.log('Server Response:', responseData);
-      
-      if (!response.ok) {
-        throw new Error(responseData.message || 'Failed to upload story');
-      }
-
-      showModal('success', 'Story added successfully!');
-      setFormModalVisible(false);
-      setTitle('');
-      setLanguage('english');
-      setStoryFile(null);
-      setStoryImage(null);
-      fetchStories(); // Refresh the stories list
     } catch (error: any) {
       console.error('Upload error:', error);
       showModal('error', error.message || 'Failed to add story');
