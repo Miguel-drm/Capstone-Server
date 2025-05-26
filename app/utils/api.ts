@@ -221,22 +221,80 @@ export const api = {
 
         const data = await response.json();
         console.log('Successfully fetched students data:', data);
-        return data;
+        // Ensure the response has a students array
+        if (!data.students || !Array.isArray(data.students)) {
+          console.error('API response for students is missing the students array:', data);
+           throw new Error('Invalid data format for students');
+        }
+        return data.students; // Return the array of students directly
 
       } catch (error: any) {
         console.error('Fetch error in api.students.getAll:', error);
         throw error;
       }
     },
+
+    getGrades: async () => {
+      console.log('Calling API to get unique grades...');
+      try {
+        const response = await fetch(`${API_URL}/upload/grades`, {
+          headers: await getHeaders(),
+        });
+
+        console.log('Response status from /upload/grades:', response.status);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('API Error getting grades:', errorData);
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Successfully fetched grades data:', data);
+         // Ensure the response has a grades array
+        if (!data.grades || !Array.isArray(data.grades)) {
+          console.error('API response for grades is missing the grades array:', data);
+           throw new Error('Invalid data format for grades');
+        }
+        return data.grades; // Return the array of grades directly
+
+      } catch (error: any) {
+        console.error('Fetch error in api.students.getGrades:', error);
+        throw error;
+      }
+    }
   },
 
   // Story endpoints
   stories: {
     getAll: async () => {
-      const response = await fetch(`${API_URL}/stories`, {
-        headers: await getHeaders(),
-      });
-      return handleResponse(response);
+      console.log('Calling API to get all stories...');
+      try {
+        const response = await fetch(`${API_URL}/stories`, {
+          headers: await getHeaders(),
+        });
+
+         console.log('Response status from /stories:', response.status);
+
+        if (!response.ok) {
+           const errorData = await response.json().catch(() => ({}));
+           console.error('API Error getting stories:', errorData);
+           throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Successfully fetched stories data:', data);
+         // Ensure the response has a stories array
+        if (!data.stories || !Array.isArray(data.stories)) {
+          console.error('API response for stories is missing the stories array:', data);
+           throw new Error('Invalid data format for stories');
+        }
+        return data.stories; // Return the array of stories directly
+
+      } catch (error: any) {
+         console.error('Fetch error in api.stories.getAll:', error);
+         throw error;
+      }
     },
 
     getById: async (id: string, signal?: AbortSignal) => {

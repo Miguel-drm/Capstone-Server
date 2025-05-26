@@ -94,6 +94,9 @@ export default function ReadingScreen() {
   const [accuracy, setAccuracy] = useState<number>(0);
   const [correctWords, setCorrectWords] = useState<number>(0);
 
+  // Add new state for manual stop tracking
+  const [isManualStop, setIsManualStop] = useState(false);
+
   // Add new state for reading progress
   const [readingProgress, setReadingProgress] = useState({
     wordsRead: 0,
@@ -134,13 +137,14 @@ export default function ReadingScreen() {
       setLoadingStudents(true);
       try {
         console.log('Fetching students for ReadingScreen...');
-        const res = await api.students.getAll();
-        console.log('Students fetched for ReadingScreen:', res);
-        if (res.students && Array.isArray(res.students)) {
-          setStudents(res.students);
-          console.log(`Successfully loaded ${res.students.length} students.`);
+        const studentsData = await api.students.getAll(); // api.students.getAll now returns the array directly
+        console.log('Students fetched for ReadingScreen:', studentsData);
+
+        if (Array.isArray(studentsData)) {
+          setStudents(studentsData);
+          console.log(`Successfully loaded ${studentsData.length} students.`);
         } else {
-          console.warn('Students data is missing or not an array in API response:', res);
+          console.warn('API response for students was not an array:', studentsData);
           setStudents([]); // Ensure students is always an array
         }
       } catch (e: any) {
@@ -153,12 +157,21 @@ export default function ReadingScreen() {
     const fetchStories = async () => {
       setLoadingStories(true);
       try {
-        const res = await api.stories.getAll();
-        console.log('Stories API response:', res); // Debug log
-        setStories(res.stories || []);
-      } catch (e) {
-        console.log('Error fetching stories:', e); // Debug log
-        setStories([]);
+        console.log('Fetching stories for ReadingScreen...');
+        const storiesData = await api.stories.getAll(); // This now returns the array directly
+        console.log('Stories fetched for ReadingScreen:', storiesData); // Log the actual data
+
+        if (Array.isArray(storiesData)) { // Check if the response is an array
+          setStories(storiesData); // Set the state directly with the array
+          console.log(`Successfully loaded ${storiesData.length} stories.`); // Log count
+        } else {
+          console.warn('API response for stories was not an array:', storiesData); // Warning if format is unexpected
+          setStories([]); // Ensure state is an empty array on error
+        }
+
+      } catch (e: any) {
+        console.error('Error fetching stories for ReadingScreen:', e); // Log error
+        setStories([]); // Clear stories on error
       } finally {
         setLoadingStories(false);
       }
@@ -484,17 +497,46 @@ export default function ReadingScreen() {
 
         newRecognition.onerror = (event: any) => {
           console.error('Speech recognition error:', event.error);
-          setIsRecording(false);
+          // Only set recording to false if it's not a manual stop in progress
+          if (!isManualStop) {
+             setIsRecording(false);
+          }
           setTempTranscription('');
           setConfidence(0);
           setIsProcessing(false);
         };
 
         newRecognition.onend = () => {
-          setIsRecording(false);
+          console.log('Speech recognition ended.');
+          // If it's not a manual stop and we are supposed to be recording, restart.
+          if (!isManualStop && isRecording) {
+            console.log('Automatic stop detected, restarting recognition...');
+            // Add a small delay before restarting
+            setTimeout(() => {
+               if (!isManualStop && isRecording && recognition) { // Check states again before restarting
+                  try {
+                     recognition.start();
+                     console.log('Recognition restarted.');
+                   } catch (restartError) {
+                     console.error('Error restarting recognition:', restartError);
+                     // If restart fails, then truly stop recording
+                     setIsRecording(false);
+                   }
+               } else {
+                  // If state changed during timeout, just ensure recording is false
+                  setIsRecording(false);
+               }
+            }, 500); // 500ms delay before attempting restart
+          } else {
+            // This was either a manual stop or not supposed to be recording anyway
+            console.log('Manual stop or not recording, recognition truly stopped.');
+            setIsRecording(false);
+          }
           setTempTranscription('');
           setConfidence(0);
           setIsProcessing(false);
+          // Reset the manual stop flag after a short delay to allow onend to fully process
+          setTimeout(() => setIsManualStop(false), 100);
         };
 
         setRecognition(newRecognition);
@@ -537,12 +579,15 @@ export default function ReadingScreen() {
   };
 
   const handleStopRecording = async () => {
+    // Set manual stop flag before stopping recognition
+    setIsManualStop(true);
     try {
       if (recognition) {
         recognition.stop();
-        setRecognition(null);
+        // Note: setIsRecording(false) will be handled by the modified onend handler
+        // after it confirms it was a manual stop.
+        setRecognition(null); // Clear the recognition instance
       }
-      setIsRecording(false);
 
       const endTime = Date.now();
       const timeInMinutes = (endTime - readingProgress.startTime) / 60000;
@@ -684,8 +729,11 @@ export default function ReadingScreen() {
 
           {/* Student and Story Dropdowns */}
           <View style={styles.dropdownsContainer}>
-            <View style={styles.dropdownWrapper}>
-              <Text style={styles.dropdownLabel}>Student</Text>
+            <View style={[styles.dropdownWrapper, { borderLeftWidth: 4, borderLeftColor: '#4A90E2' }]}>
+              <Text style={styles.dropdownLabel}>
+                <Ionicons name="person-outline" size={22} color="#4A90E2" style={{ marginRight: 8 }} />
+                Student
+              </Text>
               {loadingStudents ? (
                 <ActivityIndicator size="small" color="#4A90E2" />
               ) : (
@@ -695,17 +743,25 @@ export default function ReadingScreen() {
                     onValueChange={setSelectedStudent}
                     style={styles.picker}
                   >
-                    <Picker.Item label="Select Student" value="" />
+                    <Picker.Item label="Select Student" value="" color="#666" />
                     {students.map((s) => (
-                      <Picker.Item key={s._id} label={`${s.name} ${s.surname}`} value={s._id} />
+                      <Picker.Item 
+                        key={s._id} 
+                        label={`${s.name} ${s.surname}`} 
+                        value={s._id}
+                        color="#333"
+                      />
                     ))}
                   </Picker>
                 </View>
               )}
             </View>
 
-            <View style={styles.dropdownWrapper}>
-              <Text style={styles.dropdownLabel}>Story</Text>
+            <View style={[styles.dropdownWrapper, { borderLeftWidth: 4, borderLeftColor: '#4A90E2' }]}>
+              <Text style={styles.dropdownLabel}>
+                <Ionicons name="book-outline" size={22} color="#4A90E2" style={{ marginRight: 8 }} />
+                Story
+              </Text>
               {loadingStories ? (
                 <ActivityIndicator size="small" color="#4A90E2" />
               ) : (
@@ -715,9 +771,14 @@ export default function ReadingScreen() {
                     onValueChange={setSelectedStory}
                     style={styles.picker}
                   >
-                    <Picker.Item label="Select Story" value="" />
+                    <Picker.Item label="Select Story" value="" color="#666" />
                     {stories.map((story) => (
-                      <Picker.Item key={story._id} label={story.title} value={story._id} />
+                      <Picker.Item 
+                        key={story._id} 
+                        label={story.title} 
+                        value={story._id}
+                        color="#333"
+                      />
                     ))}
                   </Picker>
                 </View>
@@ -937,36 +998,58 @@ const styles = StyleSheet.create({
   dropdownsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 10,
+    gap: 20,
+    marginTop: 15,
+    paddingHorizontal: 5,
+    flexWrap: 'wrap',
   },
   dropdownWrapper: {
     flex: 1,
-  },
-  dropdownContainer: {
-    marginBottom: 0,
+    minWidth: 280, // Minimum width before wrapping
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#E8F0FE',
+    position: 'relative',
+    overflow: 'hidden',
   },
   dropdownLabel: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#333',
-    marginBottom: 4,
-    marginLeft: 4,
+    marginBottom: 12,
     fontWeight: '600',
+    marginLeft: 4,
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   pickerWrapper: {
-    backgroundColor: '#F0F7FF',
-    borderRadius: 12,
+    backgroundColor: '#F8FBFF',
+    borderRadius: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
     marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    overflow: 'hidden',
+    position: 'relative',
   },
   picker: {
     width: '100%',
-    height: 40,
+    height: 50,
     color: '#222',
+    fontSize: 16,
+    paddingHorizontal: 15,
+    backgroundColor: 'transparent',
   },
   imageContainer: {
     width: '100%',

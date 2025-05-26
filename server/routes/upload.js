@@ -6,6 +6,7 @@ const Student = require('../models/Student');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
+const verifyToken = require('../middleware/verifyToken');
 
 // Create uploads directory if it doesn't exist
 const uploadDir = path.join(__dirname, '../uploads');
@@ -322,12 +323,12 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
 });
 
 // Route for getting all students
-router.get('/students', async (req, res) => {
+router.get('/students', verifyToken, async (req, res) => {
     try {
         console.log('Received request for students');
         console.log('Auth header:', req.headers.authorization);
 
-        // Check if user is authenticated
+        // Check if user is authenticated (verifyToken middleware already does this, but good to be explicit)
         if (!req.headers.authorization) {
             console.log('No authorization header found');
             return res.status(401).json({
@@ -338,7 +339,7 @@ router.get('/students', async (req, res) => {
 
         const students = await Student.find({})
             .sort({ name: 1, surname: 1 })
-            .select('name surname grade');
+            .select('name surname grade _id'); // Include _id
             
         console.log(`Found ${students.length} students in database.`);
         console.log('Students data to be sent:', students);
@@ -354,6 +355,37 @@ router.get('/students', async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Error fetching students',
+            error: error.message
+        });
+    }
+});
+
+// Route for getting unique grades
+router.get('/grades', verifyToken, async (req, res) => {
+    try {
+        console.log('Received request for unique grades');
+        
+        // Use aggregation to get distinct grades
+        const grades = await Student.aggregate([
+            { $group: { _id: '$grade' } },
+            { $sort: { _id: 1 } } // Sort grades alphabetically or numerically if format allows
+        ]);
+        
+        // Extract grade values from the aggregation result
+        const uniqueGrades = grades.map(item => item._id);
+        
+        console.log(`Found ${uniqueGrades.length} unique grades:`, uniqueGrades);
+
+        return res.status(200).json({
+            success: true,
+            count: uniqueGrades.length,
+            grades: uniqueGrades || []
+        });
+    } catch (error) {
+        console.error('Error fetching unique grades:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error fetching unique grades',
             error: error.message
         });
     }
