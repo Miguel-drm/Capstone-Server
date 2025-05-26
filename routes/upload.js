@@ -343,14 +343,15 @@ router.get('/students', async (req, res) => {
             
         console.log(`Found ${students.length} students`);
         
-        res.status(200).json({
+        // Ensure we're sending a consistent response format
+        return res.status(200).json({
             success: true,
             count: students.length,
-            students: students
+            students: students || [] // Ensure students is always an array
         });
     } catch (error) {
         console.error('Error fetching students:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: 'Error fetching students',
             error: error.message
