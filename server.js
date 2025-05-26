@@ -21,7 +21,7 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-    origin: '*', // Allow all origins during development
+    origin: ['https://capstone-server-go3v.onrender.com', 'http://localhost:5000'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     credentials: true
