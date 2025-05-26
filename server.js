@@ -9,7 +9,6 @@ const uploadRouter = require('./routes/upload');
 const storyUploadRouter = require('./routes/story');
 const extractTextRouter = require('./routes/extractText');
 const verifyToken = require('./middleware/verifyToken');
-const fileUpload = require('express-fileupload');
 
 // Load environment variables from config.env
 dotenv.config({ path: path.join(__dirname, 'config.env') });
@@ -33,14 +32,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from the uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Add file upload configuration
-app.use(fileUpload({
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max file size
-  useTempFiles: true,
-  tempFileDir: '/tmp/',
-  createParentPath: true
-}));
 
 // Routes
 app.use('/api/auth', authRoutes);
