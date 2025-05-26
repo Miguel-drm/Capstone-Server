@@ -96,7 +96,7 @@ export default function SignupScreen() {
             // First test the database connection
             try {
                 console.log('Testing database connection...');
-                const dbTest = await api.test.db();
+                const dbTest = await api.tests.getAll();
                 console.log('Database test result:', dbTest);
             } catch (error) {
                 console.error('Database test failed:', error);

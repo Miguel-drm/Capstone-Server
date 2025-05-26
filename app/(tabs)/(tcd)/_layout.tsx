@@ -45,7 +45,7 @@ export default function TcdLayout() {
     { icon: 'book-outline', label: 'Reading', route: '/(tabs)/(tcd)/reading' },
     { icon: 'chatbubble-outline', label: 'Chat', route: '/(tabs)/(tcd)/chat' },
     { icon: 'list-outline', label: 'Class List', route: '/(tabs)/(tcd)/classlist' },
-    { icon: 'create-outline', label: 'Make a Test', route: '/(tabs)/(tcd)/makeTest' },
+    { icon: 'create-outline', label: 'Make a Test', route: '/(tabs)/(tcd)/Test' },
     { icon: 'download-outline', label: 'Export Data', route: '/(tabs)/(tcd)/exportData' },
   ];
 

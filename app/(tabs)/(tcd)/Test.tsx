@@ -1,9 +1,11 @@
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import React, { useState, useEffect } from 'react';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors'; // Assuming Colors is available
 import { api, API_URL, getHeaders } from '../../utils/api'; // Import API_URL and getHeaders
+import CustomModal from '@/constants/CustomModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Define types for test structure
 interface TestQuestion {
@@ -15,16 +17,28 @@ interface TestQuestion {
 }
 
 interface Test {
-  id: string;
+  _id: string;
   title: string;
-  testType: 'pre' | 'post'; // Add test type
-  studentId?: string; // Optional: test for a specific student
-  grade?: string; // Optional: test for a specific grade
-  storyId?: string; // Optional: test based on a specific story
-  questions: TestQuestion[];
+  testType: 'pre' | 'post';
+  studentId?: {
+    _id: string;
+    name: string;
+    surname: string;
+  };
+  grade?: string;
+  storyId?: {
+    _id: string;
+    title: string;
+  };
+  questions: Array<{
+    type: string;
+    questionText: string;
+    correctAnswer: string;
+  }>;
+  createdAt: string;
 }
 
-const MakeTestScreen = () => {
+const TestScreen = () => {
   const [testTitle, setTestTitle] = useState('');
   const [testType, setTestType] = useState<'pre' | 'post'>('pre'); // State for test type
   const [selectedStudent, setSelectedStudent] = useState('');
@@ -41,6 +55,17 @@ const MakeTestScreen = () => {
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [loadingGrades, setLoadingGrades] = useState(true);
   const [loadingStories, setLoadingStories] = useState(true);
+
+  // Add new state for modal
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'info'>('info');
+  const [modalMessage, setModalMessage] = useState('');
+
+  // Add new state for tests
+  const [tests, setTests] = useState<Test[]>([]);
+  const [loadingTests, setLoadingTests] = useState(true);
+  const [isTestsExpanded, setIsTestsExpanded] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch data on component mount
   useEffect(() => {
@@ -79,6 +104,78 @@ const MakeTestScreen = () => {
     fetchData();
   }, []); // Empty dependency array means this runs once on mount
 
+  // Fetch tests on component mount
+  useEffect(() => {
+    console.log('Component mounted, fetching tests...');
+    fetchTests();
+  }, []);
+
+  const fetchTests = async () => {
+    try {
+      console.log('Starting to fetch tests...');
+      setLoadingTests(true);
+      setError(null);
+
+      // Check if user is logged in
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        console.error('No authentication token found');
+        setError('Please log in to view tests');
+        setTests([]);
+        return;
+      }
+      
+      const response = await api.tests.getAll();
+      console.log('Raw API Response:', JSON.stringify(response, null, 2));
+
+      if (response && response.success && Array.isArray(response.tests)) {
+        console.log('Tests fetched successfully:', response.tests.length);
+        setTests(response.tests);
+      } else {
+        console.error('Invalid response format:', response);
+        setError(response?.message || 'Failed to load tests: Invalid response format');
+        setTests([]);
+      }
+    } catch (error: any) {
+      console.error('Error in fetchTests:', error);
+      let errorMessage = 'Failed to load tests';
+      
+      if (error.message.includes('401')) {
+        errorMessage = 'Please log in to view tests';
+      } else if (error.message.includes('403')) {
+        errorMessage = 'You do not have permission to view tests';
+      } else if (error.message.includes('404')) {
+        errorMessage = 'Tests endpoint not found';
+      } else if (error.message.includes('500')) {
+        errorMessage = 'Server error occurred';
+      }
+      
+      setError(errorMessage);
+      setTests([]);
+    } finally {
+      setLoadingTests(false);
+    }
+  };
+
+  // Add useEffect to check authentication on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        setError('Please log in to view tests');
+      } else {
+        fetchTests();
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
+  // Add a useEffect to monitor tests state changes
+  useEffect(() => {
+    console.log('Tests state updated:', tests.length);
+  }, [tests]);
+
   // Placeholder student and story data (remove now)
   // const placeholderStudents = [
   //   { _id: '1', name: 'Alice', surname: 'Smith' },
@@ -92,11 +189,21 @@ const MakeTestScreen = () => {
 
   // const placeholderGrades = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'];
 
+  // Add function to show modal
+  const showModal = (type: 'success' | 'error' | 'info', message: string) => {
+    setModalType(type);
+    setModalMessage(message);
+    setModalVisible(true);
+  };
+
   const handleAddQuestion = () => {
-    // Always add a short-answer question
+    if (questions.length >= 20) {
+      showModal('info', 'Maximum 20 questions allowed per test.');
+      return;
+    }
     const newQuestion: TestQuestion = {
-      id: Date.now().toString(), // Simple unique ID
-      type: 'short-answer', // Fixed type
+      id: Date.now().toString(),
+      type: 'short-answer',
       questionText: '',
     };
     setQuestions([...questions, newQuestion]);
@@ -114,16 +221,30 @@ const MakeTestScreen = () => {
   };
 
   const handleRemoveQuestion = (id: string) => {
+    if (questions.length <= 1) {
+      showModal('info', 'Test must have at least one question.');
+      return;
+    }
     setQuestions(questions.filter(q => q.id !== id));
   };
 
   const handleSaveTest = async () => {
-    // Ensure title and at least one question exist
     if (!testTitle || questions.length === 0) {
-        // This case should be handled by the disabled state of the button,
-        // but adding a check here for safety.
-        console.warn('Attempted to save test without title or questions.');
-        return;
+      showModal('error', 'Please add a title and at least one question.');
+      return;
+    }
+
+    // Validate that either student or grade is selected
+    if (!selectedStudent && !selectedGrade) {
+      showModal('error', 'Please select either a student or a grade.');
+      return;
+    }
+
+    // Validate that all questions have text and correct answers
+    const invalidQuestions = questions.filter(q => !q.questionText || !q.correctAnswer);
+    if (invalidQuestions.length > 0) {
+      showModal('error', 'Please fill in all questions and their correct answers.');
+      return;
     }
 
     const testData = {
@@ -132,39 +253,34 @@ const MakeTestScreen = () => {
       studentId: selectedStudent || undefined,
       grade: selectedGrade || undefined,
       storyId: selectedStory || undefined,
-      questions,
+      questions: questions.map(q => ({
+        type: 'short-answer' as const,
+        questionText: q.questionText,
+        correctAnswer: q.correctAnswer || ''
+      }))
     };
 
-    console.log('Attempting to save test to backend:', testData);
+    console.log('Sending test data:', testData);
 
     try {
-        // Call the backend API to create the test
-        const response = await fetch(`${API_URL}/tests`, {
-            method: 'POST',
-            headers: await getHeaders(), // Include authentication headers
-            body: JSON.stringify(testData),
-        });
-
-        const responseData = await response.json();
-
-        if (response.ok) {
-            console.log('Test saved successfully:', responseData.test);
-            alert('Test saved successfully!');
-            // Optionally reset the form or navigate away
-            setTestTitle('');
-            setTestType('pre');
-            setSelectedStudent('');
-            setSelectedGrade('');
-            setSelectedStory('');
-            setQuestions([]);
-        } else {
-            console.error('Failed to save test:', responseData.message || response.statusText);
-            alert(`Failed to save test: ${responseData.message || 'An error occurred'}`);
-        }
-
+      const response = await api.tests.create(testData);
+      console.log('Server response:', response);
+      
+      if (response.success) {
+        showModal('success', 'Test saved successfully!');
+        // Reset form
+        setTestTitle('');
+        setTestType('pre');
+        setSelectedStudent('');
+        setSelectedGrade('');
+        setSelectedStory('');
+        setQuestions([]);
+      } else {
+        showModal('error', response.message || 'Failed to save test');
+      }
     } catch (error: any) {
-        console.error('API call error during test save:', error);
-        alert(`Error saving test: ${error.message || 'An unexpected error occurred'}`);
+      console.error('Error saving test:', error);
+      showModal('error', error.message || 'An unexpected error occurred');
     }
   };
 
@@ -190,9 +306,113 @@ const MakeTestScreen = () => {
     );
   };
 
+  const renderTestItem = ({ item }: { item: Test }) => {
+    console.log('Rendering test item:', item);
+    // Add null checks for all properties
+    const studentName = item.studentId ? `${item.studentId.name || ''} ${item.studentId.surname || ''}`.trim() : '';
+    const storyTitle = item.storyId?.title || 'No Story';
+    const questionCount = item.questions?.length || 0;
+    const testTitle = item.title || 'Untitled Test';
+    const testType = item.testType || 'pre';
+    const grade = item.grade || 'No Grade';
+    const createdAt = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'No Date';
+
+    return (
+      <View style={styles.testItem}>
+        <View style={styles.testHeader}>
+          <Text style={styles.testTitle}>{testTitle}</Text>
+          <Text style={styles.testType}>{testType === 'pre' ? 'Pre-Test' : 'Post-Test'}</Text>
+        </View>
+        <View style={styles.testDetails}>
+          <Text style={styles.testInfo}>
+            <Ionicons name="document-text-outline" size={16} color="#666" /> {questionCount} Questions
+          </Text>
+          {studentName && (
+            <Text style={styles.testInfo}>
+              <Ionicons name="person-outline" size={16} color="#666" /> {studentName}
+            </Text>
+          )}
+          {grade && (
+            <Text style={styles.testInfo}>
+              <Ionicons name="school-outline" size={16} color="#666" /> {grade}
+            </Text>
+          )}
+          {storyTitle && (
+            <Text style={styles.testInfo}>
+              <Ionicons name="book-outline" size={16} color="#666" /> {storyTitle}
+            </Text>
+          )}
+          <Text style={styles.testInfo}>
+            <Ionicons name="calendar-outline" size={16} color="#666" /> {createdAt}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.mainContainer}>
+        {/* Tests List Section (Collapsible) */}
+        <View style={styles.testsSection}>
+          <TouchableOpacity 
+            style={styles.testsHeader}
+            onPress={() => setIsTestsExpanded(!isTestsExpanded)}
+          >
+            <View style={styles.headerContent}>
+              <Ionicons name="list-outline" size={24} color="#4A90E2" />
+              <Text style={styles.sectionTitle}>Tests ({tests.length})</Text>
+            </View>
+            <Ionicons 
+              name={isTestsExpanded ? "chevron-up" : "chevron-down"} 
+              size={24} 
+              color="#2a3a4d" 
+            />
+          </TouchableOpacity>
+
+          {isTestsExpanded && (
+            <View style={styles.testsListContainer}>
+              {loadingTests ? (
+                <ActivityIndicator size="large" color="#4A90E2" />
+              ) : error ? (
+                <View style={styles.errorContainer}>
+                  <Ionicons name="alert-circle-outline" size={48} color="#FF6347" />
+                  <Text style={styles.errorText}>{error}</Text>
+                  <TouchableOpacity 
+                    style={styles.retryButton}
+                    onPress={fetchTests}
+                  >
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : tests.length > 0 ? (
+                <FlatList
+                  data={tests}
+                  renderItem={renderTestItem}
+                  keyExtractor={(item) => item._id}
+                  scrollEnabled={false}
+                  contentContainerStyle={styles.testsList}
+                />
+              ) : (
+                <View style={styles.emptyStateContainer}>
+                  <Ionicons name="document-text-outline" size={48} color="#666" />
+                  <Text style={styles.emptyText}>No tests available</Text>
+                  <Text style={styles.emptySubText}>Create your first test using the form below</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Make Test Section */}
+        <View style={styles.makeTestSection}>
+          <View style={styles.makeTestHeader}>
+            <View style={styles.headerContent}>
+              <Ionicons name="create-outline" size={24} color={Colors.light.tint} />
       <Text style={styles.title}>Make a Test</Text>
+            </View>
+          </View>
+          <View style={styles.makeTestContainer}>
       <Text style={styles.subtitle}>Create new tests for your students.</Text>
 
        {/* Test Type Selector */}
@@ -224,7 +444,6 @@ const MakeTestScreen = () => {
 
       {/* Student/Grade/Story Selectors */}
        <View style={styles.selectorsContainer}>
-         <View style={styles.dropdownsContainer}>
            <View style={[styles.selectorWrapper, { borderLeftWidth: 4, borderLeftColor: '#4A90E2' }]}>
              <Text style={styles.label}>
                <Ionicons name="person-outline" size={22} color="#4A90E2" style={{ marginRight: 8 }} />
@@ -353,7 +572,7 @@ const MakeTestScreen = () => {
 
       </View>
 
-      {/* Save Button (Placeholder) */}
+          {/* Save Button */}
       <TouchableOpacity 
          style={[styles.saveButton, (!testTitle || questions.length === 0) && styles.saveButtonDisabled]}
          onPress={handleSaveTest}
@@ -361,66 +580,170 @@ const MakeTestScreen = () => {
       >
          <Text style={styles.saveButtonText}>Save Test</Text>
       </TouchableOpacity>
+        </View>
+      </View>
 
+      {/* CustomModal */}
+      <CustomModal
+        visible={modalVisible}
+        type={modalType}
+        message={modalMessage}
+        onClose={() => setModalVisible(false)}
+      />
     </ScrollView>
   );
 };
 
-export default MakeTestScreen;
+export default TestScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background, // Use a light background color
-    padding: 15, // Reduced padding slightly
+    backgroundColor: '#f8fbff',
   },
   scrollContent: {
-     paddingBottom: 120, // Add more padding to the bottom for the save button
+    padding: 15,
+    paddingBottom: 120,
+  },
+  mainContainer: {
+    gap: 20,
+  },
+  testsSection: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  makeTestSection: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  testsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F8FBFF',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  makeTestHeader: {
+    backgroundColor: '#F8FBFF',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2a3a4d',
   },
   title: {
-    fontSize: 28, // Slightly larger title
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 5,
-    color: Colors.light.text, // Use text color
-    textAlign: 'center',
+    color: '#2a3a4d',
+  },
+  testsListContainer: {
+    padding: 15,
+  },
+  makeTestContainer: {
+    padding: 15,
+  },
+  testItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  testHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  testTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2a3a4d',
+    flex: 1,
+  },
+  testType: {
+    fontSize: 14,
+    color: '#4A90E2',
+    backgroundColor: '#E8F0FE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  testDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  testInfo: {
+    fontSize: 14,
+    color: '#666',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: Colors.light.tint, // Use a highlight color
-    textAlign: 'center',
-    marginBottom: 25,
+    color: '#4A90E2',
+    marginBottom: 20,
   },
    testTypeContainer: {
      flexDirection: 'row',
      justifyContent: 'center',
      marginBottom: 20,
-     backgroundColor: Colors.light.background,
-     borderRadius: 8,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
      overflow: 'hidden',
      borderWidth: 1,
-     borderColor: '#ddd', // Use a light border
+    borderColor: '#E0E0E0',
   },
    testTypeButton: {
      flex: 1,
      paddingVertical: 12,
      alignItems: 'center',
-     backgroundColor: '#f0f0f0', // Default inactive background
+    backgroundColor: '#fff',
   },
   testTypeButtonActive: {
-     backgroundColor: Colors.light.tint, // Active background
+    backgroundColor: '#4A90E2',
   },
   testTypeButtonText: {
      fontSize: 16,
      fontWeight: '600',
-     color: '#555', // Default text color
+    color: '#666',
   },
   testTypeButtonTextActive: {
-     color: Colors.light.background, // Active text color
+    color: '#fff',
   },
   inputContainer: {
      marginBottom: 20,
-     backgroundColor: Colors.light.background, // Card background
-     borderRadius: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
      padding: 15,
      shadowColor: '#000',
      shadowOffset: { width: 0, height: 1 },
@@ -439,45 +762,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   input: {
-    backgroundColor: '#eef2f7', // Lighter background for input
-    borderRadius: 8,
-    paddingVertical: 12, // Increased padding
+    backgroundColor: '#F8FBFF',
+    borderRadius: 12,
+    paddingVertical: 12,
     paddingHorizontal: 15,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#ddd', // Use border color
-    color: Colors.light.text,
+    borderColor: '#E0E0E0',
+    color: '#2a3a4d',
   },
   selectorsContainer: {
     marginBottom: 20,
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 16,
+    padding: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  dropdownsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 15,
-    marginTop: 10,
-    flexWrap: 'wrap',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
    selectorWrapper: {
      flex: 1,
      minWidth: 280,
      marginBottom: 15,
      backgroundColor: '#fff',
-     borderRadius: 20,
+    borderRadius: 12,
      padding: 15,
      shadowColor: '#000',
-     shadowOffset: { width: 0, height: 4 },
-     shadowOpacity: 0.15,
-     shadowRadius: 8,
-     elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
      borderWidth: 1,
      borderColor: '#E8F0FE',
      position: 'relative',
@@ -486,11 +802,11 @@ const styles = StyleSheet.create({
    picker: {
      width: '100%',
      height: 50,
-     color: '#222',
+    color: '#2a3a4d',
      fontSize: 16,
      paddingHorizontal: 15,
      backgroundColor: '#F8FBFF',
-     borderRadius: 15,
+    borderRadius: 12,
      borderWidth: 1,
      borderColor: '#E0E0E0',
    },
@@ -509,8 +825,8 @@ const styles = StyleSheet.create({
    },
   questionsContainer: {
     marginBottom: 20,
-    backgroundColor: Colors.light.background, // Card background
-    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
     padding: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -518,22 +834,13 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.light.text, // Use text color
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd', // Use border color
-    paddingBottom: 10,
-  },
   questionItem: {
-    backgroundColor: '#eef2f7', // Lighter background for question item
-    borderRadius: 8,
+    backgroundColor: '#F8FBFF',
+    borderRadius: 12,
     padding: 15,
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#ddd', // Use border color
+    borderColor: '#E0E0E0',
   },
   questionHeader: {
      flexDirection: 'row',
@@ -542,89 +849,113 @@ const styles = StyleSheet.create({
      marginBottom: 10,
      paddingBottom: 10,
      borderBottomWidth: 1,
-     borderBottomColor: '#ddd', // Use border color
+    borderBottomColor: '#E0E0E0',
   },
    questionNumberLabel: {
      fontSize: 16,
      fontWeight: '600',
-     color: Colors.light.text, // Use text color
+    color: '#2a3a4d',
   },
   questionForm: {
     marginTop: 10,
   },
   questionInput: {
-    backgroundColor: Colors.light.background, // White background for input
-    borderRadius: 5,
-    padding: 12, // Increased padding
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#ddd', // Use border color
+    borderColor: '#E0E0E0',
     marginBottom: 10,
-    color: Colors.light.text,
-  },
-  optionsLabel: {
-    fontSize: 14,
-    color: Colors.light.text, // Use text color
-    marginBottom: 8,
-    fontWeight: '500',
-  },
-  optionInput: {
-     backgroundColor: Colors.light.background, // White background for input
-    borderRadius: 5,
-    padding: 10,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#ddd', // Use border color
-    marginBottom: 8,
-    color: Colors.light.text,
+    color: '#2a3a4d',
   },
    correctAnswerInput: {
-    backgroundColor: Colors.light.background, // White background for input
-    borderRadius: 5,
-    padding: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: Colors.light.tint, // Use tint color for correct answer highlight
+    borderColor: '#4A90E2',
     marginTop: 10,
-    color: Colors.light.text,
-  },
-  addQuestionContainer: {
-     marginTop: 15,
-     borderTopWidth: 1,
-     borderTopColor: '#ddd', // Use border color
-     paddingTop: 15,
+    color: '#2a3a4d',
   },
   addButton: {
-    backgroundColor: Colors.light.tint, // Use tint color
-    borderRadius: 8,
+    backgroundColor: '#4A90E2',
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 10,
-    opacity: 1, // Default opacity
+    opacity: 1,
   },
    addButtonDisabled: {
-     opacity: 0.6, // Dim when disabled
+    opacity: 0.6,
    },
   addButtonText: {
     fontSize: 18,
-    color: Colors.light.background, // White text on tinted background
+    color: '#fff',
     fontWeight: 'bold',
   },
   saveButton: {
-    backgroundColor: Colors.light.tint, // Use tint color for save button
-    borderRadius: 10,
+    backgroundColor: '#4A90E2',
+    borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',
     marginTop: 20,
     marginBottom: 20,
-    opacity: 1, // Default opacity
+    opacity: 1,
   },
    saveButtonDisabled: {
-     opacity: 0.6, // Dim when disabled
+    opacity: 0.6,
    },
   saveButtonText: {
     fontSize: 20,
-    color: Colors.light.background, // White text
+    color: '#fff',
     fontWeight: 'bold',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    marginTop: 20,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 16,
+    marginTop: 10,
+    fontWeight: '600',
+  },
+  emptySubText: {
+    textAlign: 'center',
+    color: '#999',
+    fontSize: 14,
+    marginTop: 5,
+  },
+  testsList: {
+    paddingBottom: 10,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    marginTop: 20,
+  },
+  errorText: {
+    textAlign: 'center',
+    color: '#FF6347',
+    fontSize: 16,
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  retryButton: {
+    backgroundColor: '#4A90E2',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

@@ -1,11 +1,10 @@
 const mongoose = require('mongoose');
 
-// Define the schema for individual test questions
-const questionSchema = new mongoose.Schema({
+const testQuestionSchema = new mongoose.Schema({
   type: {
     type: String,
-    required: true,
-    enum: ['short-answer'] // Only short-answer supported for now
+    enum: ['short-answer'],
+    required: true
   },
   questionText: {
     type: String,
@@ -14,13 +13,11 @@ const questionSchema = new mongoose.Schema({
   },
   correctAnswer: {
     type: String,
-    // Making this optional at the schema level for flexibility, 
-    // but validation should ensure it's present for scorable questions.
+    required: [true, 'Correct answer is required'],
     trim: true
   }
 });
 
-// Define the main schema for a Test
 const testSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -29,31 +26,53 @@ const testSchema = new mongoose.Schema({
   },
   testType: {
     type: String,
-    required: [true, 'Test type is required'],
-    enum: ['pre', 'post']
+    enum: ['pre', 'post'],
+    required: [true, 'Test type is required']
   },
-  student: {
+  studentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Student',
-    required: false // Optional assignment
+    required: false
   },
   grade: {
     type: String,
-    required: false // Optional assignment
+    required: false
   },
-  story: {
+  storyId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Stories',
-    required: false // Optional assignment
+    ref: 'Story',
+    required: false
   },
-  questions: [
-    questionSchema // Array of question subdocuments
-  ]
+  questions: [testQuestionSchema],
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
 }, {
-  timestamps: true // Adds createdAt and updatedAt timestamps
+  timestamps: true,
+  collection: 'tests'
 });
 
-// Create the Test model
+// Add validation to ensure at least one question exists
+testSchema.pre('save', function(next) {
+  if (this.questions.length === 0) {
+    next(new Error('Test must have at least one question'));
+  }
+  next();
+});
+
+// Add validation to ensure either studentId or grade is provided
+testSchema.pre('save', function(next) {
+  if (!this.studentId && !this.grade) {
+    next(new Error('Either student or grade must be specified'));
+  }
+  next();
+});
+
 const Test = mongoose.model('Test', testSchema);
 
 module.exports = Test; 

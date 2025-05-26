@@ -187,16 +187,88 @@ export const api = {
   },
 
   // Test endpoints
-  test: {
-    db: async () => {
-      const response = await fetch(`${API_URL}/test/db`);
-      return handleResponse(response);
-    },
-    user: async (email: string) => {
-      const response = await fetch(`${API_URL}/test/user`, {
+  tests: {
+    create: async (testData: {
+      title: string;
+      testType: 'pre' | 'post';
+      studentId?: string;
+      grade?: string;
+      storyId?: string;
+      questions: Array<{
+        type: 'short-answer';
+        questionText: string;
+        correctAnswer: string;
+      }>;
+    }) => {
+      const response = await fetch(`${API_URL}/tests`, {
         method: 'POST',
         headers: await getHeaders(),
-        body: JSON.stringify({ email })
+        body: JSON.stringify(testData)
+      });
+      return handleResponse(response);
+    },
+
+    getAll: async () => {
+      console.log('Fetching all tests...');
+      try {
+        const headers = await getHeaders();
+        console.log('Headers:', headers);
+        
+        const response = await fetch(`${API_URL}/tests`, {
+          headers
+        });
+        
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Error fetching tests:', errorData);
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Tests data received:', data);
+
+        // Validate response format
+        if (!data || typeof data !== 'object') {
+          console.error('Invalid response format: not an object');
+          throw new Error('Invalid response format from server');
+        }
+
+        if (!data.success) {
+          console.error('Server returned unsuccessful response:', data);
+          throw new Error(data.message || 'Failed to fetch tests');
+        }
+
+        if (!Array.isArray(data.tests)) {
+          console.error('Invalid response format: tests is not an array', data);
+          throw new Error('Invalid response format: tests should be an array');
+        }
+
+        return data;
+      } catch (error) {
+        console.error('Error in tests.getAll:', error);
+        throw error;
+      }
+    },
+
+    getById: async (id: string) => {
+      const response = await fetch(`${API_URL}/tests/${id}`, {
+        headers: await getHeaders()
+      });
+      return handleResponse(response);
+    },
+
+    getByStudent: async (studentId: string) => {
+      const response = await fetch(`${API_URL}/tests/student/${studentId}`, {
+        headers: await getHeaders()
+      });
+      return handleResponse(response);
+    },
+
+    getByGrade: async (grade: string) => {
+      const response = await fetch(`${API_URL}/tests/grade/${grade}`, {
+        headers: await getHeaders()
       });
       return handleResponse(response);
     }
