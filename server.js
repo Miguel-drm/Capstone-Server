@@ -9,7 +9,7 @@ const uploadRouter = require('./routes/upload');
 const storyUploadRouter = require('./routes/story');
 const extractTextRouter = require('./routes/extractText');
 const verifyToken = require('./middleware/verifyToken');
-const testsRouter = require('./routes/tests');
+const testsRouter = require('./routes/test');
 
 // Load environment variables from config.env
 dotenv.config({ path: path.join(__dirname, 'config.env') });
