@@ -340,8 +340,9 @@ router.get('/students', async (req, res) => {
             .sort({ name: 1, surname: 1 })
             .select('name surname grade');
             
-        console.log(`Found ${students.length} students`);
-        
+        console.log(`Found ${students.length} students in database.`);
+        console.log('Students data to be sent:', students);
+
         // Ensure we're sending a consistent response format
         return res.status(200).json({
             success: true,
