@@ -149,7 +149,7 @@ async function processExcelData(filePath) {
         }
 
         if (errors.length > 0) {
-            throw new Error(`Validation errors found:\n${errors.join('\n')}`);
+            console.warn('Validation errors found:', errors);
         }
 
         return students;
@@ -276,6 +276,13 @@ router.post('/upload', upload.single('file'), handleMulterError, async (req, res
                 message: 'No valid students found in the Excel file. Please check the file format.'
             });
         }
+
+        // Generate a unique importBatchId for this upload
+        const importBatchId = uuidv4();
+        // Assign importBatchId to each student
+        students.forEach(student => {
+            student.importBatchId = importBatchId;
+        });
 
         // Get count of existing students
         const existingCount = await Student.countDocuments();
