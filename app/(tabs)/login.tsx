@@ -135,7 +135,7 @@ export default function LoginScreen() {
         disabled={isLoading}
       >
         <Text style={styles.buttonText}>
-          {isLoading ? 'Logging in...' : 'Log on'}
+          {isLoading ? 'Logging in...' : 'Log in'}
         </Text>
       </TouchableOpacity>
       <View style={{ flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 10 }}>
