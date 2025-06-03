@@ -147,7 +147,7 @@ export default function SignupScreen() {
                 onClose={() => setModalVisible(false)}
             />
             <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Sign up to get started.</Text>
+            <Text style={styles.subtitle}>Sign up to get started1111.</Text>
             
             <Text style={styles.label}>NAME</Text>
             <TextInput
