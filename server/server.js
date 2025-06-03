@@ -10,6 +10,7 @@ const storyUploadRouter = require('./routes/story');
 const extractTextRouter = require('./routes/extractText');
 const verifyToken = require('./middleware/verifyToken');
 const testsRouter = require('./routes/test');
+const exportRoutes = require('./routes/exportRoutes');
 
 // Load environment variables from config.env
 dotenv.config({ path: path.join(__dirname, 'config.env') });
@@ -40,6 +41,7 @@ app.use('/api/upload', verifyToken, uploadRouter);
 app.use('/api/stories', storyUploadRouter);
 app.use('/api/extract-text', extractTextRouter);
 app.use('/api/tests', verifyToken, testsRouter);
+app.use('/api', exportRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {
